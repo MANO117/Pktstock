@@ -1,0 +1,6 @@
+{
+  "name": "Material Stock Register",
+  "description": "A comprehensive stock management system for materials like steel and cement, featuring Excel-based master data imports, scheme-wise tracking, and automated balance reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["data_management", "excel_processing", "reporting"]
+}
