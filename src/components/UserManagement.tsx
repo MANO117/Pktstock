@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { SystemUser } from '../types';
 import { Users, UserCheck, UserX, Clock, Shield, Key, Edit2, Plus, X as CloseIcon, Save, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export default function UserManagement() {
-  const { systemUsers: users } = useFirebase();
+  const { systemUsers: users } = useData();
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [formData, setFormData] = useState({

@@ -12,103 +12,37 @@ import Reports from './components/Reports';
 import DashboardOverview from './components/DashboardOverview';
 import UserManagement from './components/UserManagement';
 import { motion, AnimatePresence } from 'motion/react';
-import { StockTransaction, SystemUser } from './types';
-import { FirebaseProvider, useFirebase } from './components/FirebaseProvider';
+import { Scheme, Overseer, Panchayat, Beneficiary, StockTransaction, Material, SystemUser } from '../types';
+import { DataProvider, useData } from './components/DataProvider';
 import { Storage } from './lib/storage';
-import { auth, signInWithGoogle, signInAsGuest } from './lib/firebase';
 
 type Tab = 'dashboard' | 'master' | 'entry' | 'view' | 'reports' | 'users';
 
 function AppContent() {
-  const { user, loading, dataLoading, isApproved, currentUser, systemUsers } = useFirebase();
+  const { user, loading, dataLoading, isApproved, currentUser, systemUsers, login, logout } = useData();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [manualCredentials, setManualCredentials] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
-
-  const handleGoogleLogin = async () => {
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      console.error('Login failed:', error);
-      alert('Failed to sign in with Google');
-    }
-  };
-
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-
-  // Effect to handle manual login validation after data arrives
-  useEffect(() => {
-    const checkManualEscalation = async () => {
-      const pendingManual = localStorage.getItem('pending_manual_login');
-      if (pendingManual && user && systemUsers.length > 0) {
-         const { username, password } = JSON.parse(pendingManual);
-         const targetUser = systemUsers.find(u => 
-            u.username.toLowerCase() === username.toLowerCase() && 
-            u.password === password
-         );
-  
-         if (targetUser) {
-            if (targetUser.status === 'APPROVED') {
-               try {
-                  // Escalation: Sync the current UID record with the target account's status/role
-                  await Storage.setUserData({
-                    id: user.uid,
-                    role: targetUser.role,
-                    status: 'APPROVED',
-                    username: targetUser.username,
-                    requestedAt: new Date().toISOString()
-                  });
-                  localStorage.setItem('manual_user_id', targetUser.id);
-                  localStorage.removeItem('pending_manual_login');
-                  setIsAuthenticating(false);
-               } catch (err) {
-                  console.error('Escalation failed:', err);
-                  setLoginError('Verification failed. Your account may not have permission to sync.');
-                  setIsAuthenticating(false);
-               }
-            } else {
-               setLoginError(`Account status: ${targetUser.status}`);
-               localStorage.removeItem('pending_manual_login');
-               if (user.isAnonymous) auth.signOut();
-               setIsAuthenticating(false);
-            }
-         } else {
-            setLoginError('Invalid username or password');
-            localStorage.removeItem('pending_manual_login');
-            if (user.isAnonymous) auth.signOut();
-            setIsAuthenticating(false);
-         }
-      }
-    };
-
-    checkManualEscalation();
-  }, [user, systemUsers]);
 
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     setIsAuthenticating(true);
     
-    // Store credentials temporarily
-    localStorage.setItem('pending_manual_login', JSON.stringify(manualCredentials));
-    
-    if (!user) {
-       // Force Google login first if not authenticated at all
-       try {
-         await handleGoogleLogin();
-       } catch (err) {
-         setLoginError('Authentication failed. Please use Google Sign-In.');
-         setIsAuthenticating(false);
-       }
-       return;
+    try {
+      await login(manualCredentials);
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed');
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('manual_user_id');
-    auth.signOut();
+    logout();
     setActiveTab('dashboard');
   };
 
@@ -144,7 +78,7 @@ function AppContent() {
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
         >
-          <div className="bg-gradient-to-br from-blue-700 to-indigo-900 p-10 text-center relative overflow-hidden">
+          <div className="bg-gradient-to-br from-indigo-700 to-slate-900 p-10 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
             <div className="relative z-10">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 rounded-2xl mb-6 backdrop-blur-md border border-white/20 shadow-2xl">
@@ -155,101 +89,75 @@ function AppContent() {
             </div>
           </div>
           
-          <div className="p-10">
-            {user && isApproved ? (
-              <div className="text-center">
-                <div className="w-20 h-20 bg-emerald-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-sm">
-                  <UserCheck className="w-10 h-10 text-emerald-600" />
-                </div>
-                <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">Identity Verified</h2>
-                <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-                  Welcome back, <span className="text-slate-900 font-bold">{currentUser?.username}</span>. Your access to the central stock registry is active.
-                </p>
-                <div className="animate-pulse flex items-center justify-center gap-2 text-emerald-600 font-black text-[10px] uppercase tracking-widest">
-                  Redirecting to Dashboard...
-                </div>
-              </div>
-            ) : user ? (
-              <div className="p-10 space-y-6">
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-sm text-amber-500">
-                    <Shield className="w-10 h-10" />
-                  </div>
-                  <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">Syncing Required</h2>
-                  <p className="text-slate-500 text-xs mb-6 leading-relaxed">
-                    Account: <span className="text-slate-900 font-bold">{user.email || 'Guest Session'}</span>. 
-                    Verify internal credentials to access the registry.
+          <div className="p-10 space-y-8">
+            <div className="text-center">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
+                {user ? 'Account Pending' : 'Secure Login'}
+              </h2>
+              <p className="text-slate-400 text-xs font-medium">
+                {user ? 'Awaiting administrator approval' : 'Enter internal credentials to proceed'}
+              </p>
+            </div>
+
+            {user && !isApproved ? (
+              <div className="space-y-6">
+                <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-center">
+                  <Shield className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+                  <p className="text-xs text-amber-800 font-bold leading-relaxed uppercase tracking-widest">
+                    Approval Required
+                  </p>
+                  <p className="text-[10px] text-amber-700/70 mt-1">
+                    Username: <span className="text-slate-900">{user.username}</span>
                   </p>
                 </div>
-
-                <form onSubmit={handleManualLogin} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <input 
-                      type="text" 
-                      required
-                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 transition-all font-bold text-slate-700 text-sm"
-                      placeholder="Username"
-                      value={manualCredentials.username}
-                      onChange={(e) => setManualCredentials({ ...manualCredentials, username: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <input 
-                      type="password" 
-                      required
-                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 transition-all font-bold text-slate-700 text-sm"
-                      placeholder="Password"
-                      value={manualCredentials.password}
-                      onChange={(e) => setManualCredentials({ ...manualCredentials, password: e.target.value })}
-                    />
-                  </div>
-                  {loginError && <p className="text-red-500 text-[10px] font-black uppercase text-center">{loginError}</p>}
-                  <button 
-                    type="submit"
-                    disabled={isAuthenticating}
-                    className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-                  >
-                    {isAuthenticating ? 'Syncing...' : 'Verify Credentials'}
-                  </button>
-                </form>
-
-                <div className="pt-4 border-t border-slate-100">
-                  <button 
-                    onClick={handleLogout}
-                    className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
-                  >
-                    Switch Account
-                  </button>
-                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
+                >
+                  Return to Login
+                </button>
               </div>
             ) : (
-              <div className="space-y-8">
-                <div className="text-center">
-                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">Internal Portal</h2>
-                  <p className="text-slate-400 text-xs font-medium">Authentication Required</p>
+              <form onSubmit={handleManualLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    placeholder="Enter username"
+                    value={manualCredentials.username}
+                    onChange={(e) => setManualCredentials({ ...manualCredentials, username: e.target.value })}
+                  />
                 </div>
-                
-                <div className="bg-slate-50 p-6 rounded-2xl border border-dashed border-slate-200">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center leading-relaxed">
-                    Access is restricted to authorized personnel. Please verify your identity using corporate SSO.
-                  </p>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+                  <input 
+                    type="password" 
+                    required
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    placeholder="••••••••"
+                    value={manualCredentials.password}
+                    onChange={(e) => setManualCredentials({ ...manualCredentials, password: e.target.value })}
+                  />
                 </div>
-
-                <button
-                  onClick={handleGoogleLogin}
-                  className="w-full bg-slate-900 text-white font-black text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-slate-900/20 active:scale-95 group hover:bg-black"
+                {loginError && <p className="text-red-500 text-[10px] font-black uppercase tracking-tight text-center">{loginError}</p>}
+                <button 
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-900/20 hover:bg-black transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
                 >
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4 grayscale group-hover:grayscale-0 transition-all" />
-                  <span>Authorize with Google</span>
+                  {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                  {isAuthenticating ? 'Authenticating...' : 'Authorize Access'}
                 </button>
-
-                <div className="text-center">
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                    Infrastructure Asset Control System v2.0
-                  </p>
-                </div>
-              </div>
+              </form>
             )}
+            
+            <div className="text-center">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                Infrastructure Asset Control System v3.0 (Internal)
+              </p>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -384,8 +292,8 @@ function AppContent() {
 
 export default function App() {
   return (
-    <FirebaseProvider>
+    <DataProvider>
       <AppContent />
-    </FirebaseProvider>
+    </DataProvider>
   );
 }

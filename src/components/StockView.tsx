@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { MaterialType } from '../types';
 import { Calendar, ArrowRight, ArrowLeft, ClipboardList, Printer, Info } from 'lucide-react';
 import { format, subDays, addDays, parseISO } from 'date-fns';
 
 export default function StockView() {
-  const { materials: materialsData, transactions } = useFirebase();
+  const { materials: materialsData, transactions } = useData();
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [balances, setBalances] = useState<any[]>([]);
 

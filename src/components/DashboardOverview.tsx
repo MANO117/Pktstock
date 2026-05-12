@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { StockTransaction, MaterialType, Scheme, Overseer, Panchayat } from '../types';
 import { 
   BarChart3, 
@@ -34,7 +34,7 @@ interface DashboardOverviewProps {
 }
 
 export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOverviewProps) {
-  const { transactions, schemes, overseers, panchayats, materials: allMaterials } = useFirebase();
+  const { transactions, schemes, overseers, panchayats, materials: allMaterials } = useData();
   const [dateRange, setDateRange] = useState<{start: string, end: string}>({
     start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')

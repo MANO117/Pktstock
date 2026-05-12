@@ -1,50 +1,106 @@
 import { Scheme, Overseer, Panchayat, Beneficiary, StockTransaction, MaterialType, SystemUser, Material } from '../types';
-import { format, isSameDay, parseISO, startOfDay, subDays } from 'date-fns';
-import { db } from './firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { isSameDay, parseISO, startOfDay, subDays } from 'date-fns';
+
+const API_BASE = '/api';
 
 export const Storage = {
+  // Auth Operations
+  login: async (credentials: any) => {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials)
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Login failed');
+    }
+    return res.json();
+  },
+
+  register: async (user: any) => {
+    const res = await fetch(`${API_BASE}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user)
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Registration failed');
+    }
+    return res.json();
+  },
+
+  getAllData: async () => {
+    const res = await fetch(`${API_BASE}/data`);
+    return res.json();
+  },
+
   // Master Data Write Operations
   setMaterial: async (data: Material) => {
-    await setDoc(doc(db, 'materials', data.id), data);
+    await fetch(`${API_BASE}/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deleteMaterial: async (id: string) => {
-    await deleteDoc(doc(db, 'materials', id));
+    await fetch(`${API_BASE}/materials/${id}`, { method: 'DELETE' });
   },
 
   setScheme: async (data: Scheme) => {
-    await setDoc(doc(db, 'schemes', data.id), data);
+    await fetch(`${API_BASE}/schemes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deleteScheme: async (id: string) => {
-    await deleteDoc(doc(db, 'schemes', id));
+    await fetch(`${API_BASE}/schemes/${id}`, { method: 'DELETE' });
   },
   
   setOverseer: async (data: Overseer) => {
-    await setDoc(doc(db, 'overseers', data.id), data);
+    await fetch(`${API_BASE}/overseers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deleteOverseer: async (id: string) => {
-    await deleteDoc(doc(db, 'overseers', id));
+    await fetch(`${API_BASE}/overseers/${id}`, { method: 'DELETE' });
   },
   
   setPanchayat: async (data: Panchayat) => {
-    await setDoc(doc(db, 'panchayats', data.id), data);
+    await fetch(`${API_BASE}/panchayats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deletePanchayat: async (id: string) => {
-    await deleteDoc(doc(db, 'panchayats', id));
+    await fetch(`${API_BASE}/panchayats/${id}`, { method: 'DELETE' });
   },
   
   setBeneficiary: async (data: Beneficiary) => {
-    await setDoc(doc(db, 'beneficiaries', data.id), data);
+    await fetch(`${API_BASE}/beneficiaries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deleteBeneficiary: async (id: string) => {
-    await deleteDoc(doc(db, 'beneficiaries', id));
+    await fetch(`${API_BASE}/beneficiaries/${id}`, { method: 'DELETE' });
   },
   
   setTransaction: async (data: StockTransaction) => {
-    await setDoc(doc(db, 'transactions', data.id), data);
+    await fetch(`${API_BASE}/transactions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   deleteTransaction: async (id: string) => {
-    await deleteDoc(doc(db, 'transactions', id));
+    await fetch(`${API_BASE}/transactions/${id}`, { method: 'DELETE' });
   },
 
   calculateDailyBalance: (material: MaterialType, targetDate: string, transactions: StockTransaction[]) => {
@@ -76,23 +132,39 @@ export const Storage = {
   },
 
   setUserData: async (data: SystemUser) => {
-    await setDoc(doc(db, 'users', data.id), data);
+    await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
   
   updateUser: async (userId: string, data: Partial<SystemUser>) => {
-    await updateDoc(doc(db, 'users', userId), data);
+    await fetch(`${API_BASE}/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   },
 
   deleteUser: async (userId: string) => {
-    await deleteDoc(doc(db, 'users', userId));
+    await fetch(`${API_BASE}/users/${userId}`, { method: 'DELETE' });
   },
   
   approveUser: async (userId: string) => {
-    await updateDoc(doc(db, 'users', userId), { status: 'APPROVED' });
+    await fetch(`${API_BASE}/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'APPROVED' })
+    });
   },
   
   rejectUser: async (userId: string) => {
-    await updateDoc(doc(db, 'users', userId), { status: 'REJECTED' });
+    await fetch(`${API_BASE}/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'REJECTED' })
+    });
   },
 
   generateId: (): string => {

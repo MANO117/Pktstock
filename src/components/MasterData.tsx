@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { Scheme, Overseer, Panchayat, Beneficiary, Material } from '../types';
 import { Upload, Plus, Trash2, Edit2, FileSpreadsheet, User, ClipboardList, X, Search, Database, Users, MapPin, Building, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
-  const { schemes, overseers, panchayats, beneficiaries, materials } = useFirebase();
+  const { schemes, overseers, panchayats, beneficiaries, materials } = useData();
   
   const [newScheme, setNewScheme] = useState({ name: '', year: new Date().getFullYear().toString() });
   const [newOverseer, setNewOverseer] = useState('');

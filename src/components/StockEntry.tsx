@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { MaterialType, StockTransaction, Scheme, Panchayat, Beneficiary } from '../types';
 import { PlusCircle, MinusCircle, History, Trash2, Search, Edit2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -12,7 +12,7 @@ interface StockEntryProps {
 }
 
 export default function StockEntry({ editData, onComplete, isAdmin }: StockEntryProps) {
-  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials } = useFirebase();
+  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials } = useData();
   const [type, setType] = useState<'RECEIPT' | 'ISSUE'>('RECEIPT');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   

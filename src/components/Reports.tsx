@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Storage } from '../lib/storage';
-import { useFirebase } from './FirebaseProvider';
+import { useData } from './DataProvider';
 import { StockTransaction, MaterialType, Panchayat, Overseer, Scheme } from '../types';
 import { FileText, Download, PieChart, BarChart3, Filter, Edit2, Printer } from 'lucide-react';
 import { format, parseISO, startOfMonth, startOfQuarter, startOfYear, isSameMonth, isSameQuarter, isSameYear } from 'date-fns';
@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransaction) => void, isAdmin?: boolean }) {
-  const { transactions, panchayats, overseers, schemes, materials: materialList, beneficiaries } = useFirebase();
+  const { transactions, panchayats, overseers, schemes, materials: materialList, beneficiaries } = useData();
   
   const [filter, setFilter] = useState({
     timeRange: 'Monthly' as 'Monthly' | 'Quarterly' | 'Yearly',
