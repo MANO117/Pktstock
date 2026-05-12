@@ -61,6 +61,7 @@ export interface StockTransaction {
 export interface SystemUser {
   id: string;
   username: string;
+  fullName?: string;
   password?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   role: 'ADMIN' | 'USER';

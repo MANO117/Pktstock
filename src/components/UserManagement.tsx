@@ -11,6 +11,7 @@ export default function UserManagement() {
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [formData, setFormData] = useState({
     username: '',
+    fullName: '',
     password: '',
     role: 'USER' as 'ADMIN' | 'USER',
     status: 'APPROVED' as 'APPROVED' | 'PENDING' | 'REJECTED'
@@ -33,6 +34,7 @@ export default function UserManagement() {
       const newUser: SystemUser = {
         id: Storage.generateId(),
         username: formData.username,
+        fullName: formData.fullName,
         password: formData.password,
         role: formData.role,
         status: formData.status,
@@ -41,13 +43,14 @@ export default function UserManagement() {
       await Storage.setUserData(newUser);
       setIsAdding(false);
     }
-    setFormData({ username: '', password: '', role: 'USER', status: 'APPROVED' });
+    setFormData({ username: '', fullName: '', password: '', role: 'USER', status: 'APPROVED' });
   };
 
   const startEdit = (user: SystemUser) => {
     setEditingUser(user);
     setFormData({
       username: user.username,
+      fullName: user.fullName || '',
       password: user.password || '',
       role: user.role,
       status: user.status
@@ -90,12 +93,23 @@ export default function UserManagement() {
               </div>
               <div className="p-8 space-y-6">
                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <input 
+                      type="text" required
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold"
+                      value={formData.fullName}
+                      onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                      placeholder="Jane Doe"
+                    />
+                 </div>
+                 <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
                     <input 
                       type="text" required
                       className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold"
                       value={formData.username}
                       onChange={e => setFormData({ ...formData, username: e.target.value })}
+                      placeholder="jdoe"
                     />
                  </div>
                  <div className="space-y-1.5">
@@ -164,10 +178,10 @@ export default function UserManagement() {
                 <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-8 py-4">
                     <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-600 text-[10px]">{u.username[0].toUpperCase()}</div>
+                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-600 text-[10px]">{u.fullName ? u.fullName[0].toUpperCase() : u.username[0].toUpperCase()}</div>
                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800">{u.username}</span>
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Ref: {u.id.substring(0,8)}</span>
+                          <span className="font-bold text-slate-800">{u.fullName || u.username}</span>
+                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">UID: {u.username}</span>
                        </div>
                     </div>
                   </td>

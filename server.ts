@@ -25,6 +25,7 @@ async function loadData() {
         {
           id: "admin-001",
           username: "admin",
+          fullName: "System Administrator",
           password: "admin123",
           role: "ADMIN",
           status: "APPROVED",

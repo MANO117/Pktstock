@@ -12,7 +12,7 @@ import Reports from './components/Reports';
 import DashboardOverview from './components/DashboardOverview';
 import UserManagement from './components/UserManagement';
 import { motion, AnimatePresence } from 'motion/react';
-import { Scheme, Overseer, Panchayat, Beneficiary, StockTransaction, Material, SystemUser } from '../types';
+import { Scheme, Overseer, Panchayat, Beneficiary, StockTransaction, Material, SystemUser } from './types';
 import { DataProvider, useData } from './components/DataProvider';
 import { Storage } from './lib/storage';
 
@@ -26,6 +26,23 @@ function AppContent() {
   const [manualCredentials, setManualCredentials] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [regFormData, setRegFormData] = useState({ username: '', password: '', fullName: '' });
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsAuthenticating(true);
+    try {
+      await Storage.register(regFormData);
+      setIsRegistering(false);
+      setLoginError('Registration successful. Awaiting admin approval.');
+    } catch (err: any) {
+      setLoginError(err.message || 'Registration failed');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,14 +89,13 @@ function AppContent() {
 
   if (!user || !isApproved) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
         >
           <div className="bg-gradient-to-br from-indigo-700 to-slate-900 p-10 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
             <div className="relative z-10">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 rounded-2xl mb-6 backdrop-blur-md border border-white/20 shadow-2xl">
                 <Package className="w-12 h-12 text-white" />
@@ -92,10 +108,10 @@ function AppContent() {
           <div className="p-10 space-y-8">
             <div className="text-center">
               <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
-                {user ? 'Account Pending' : 'Secure Login'}
+                {user ? 'Account Pending' : (isRegistering ? 'Create Account' : 'Secure Login')}
               </h2>
               <p className="text-slate-400 text-xs font-medium">
-                {user ? 'Awaiting administrator approval' : 'Enter internal credentials to proceed'}
+                {user ? 'Awaiting administrator approval' : (isRegistering ? 'Request access to the system' : 'Enter internal credentials to proceed')}
               </p>
             </div>
 
@@ -117,6 +133,58 @@ function AppContent() {
                   Return to Login
                 </button>
               </div>
+            ) : isRegistering ? (
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    placeholder="Enter your name"
+                    value={regFormData.fullName}
+                    onChange={(e) => setRegFormData({ ...regFormData, fullName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    placeholder="Choose username"
+                    value={regFormData.username}
+                    onChange={(e) => setRegFormData({ ...regFormData, username: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+                  <input 
+                    type="password" 
+                    required
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    placeholder="••••••••"
+                    value={regFormData.password}
+                    onChange={(e) => setRegFormData({ ...regFormData, password: e.target.value })}
+                  />
+                </div>
+                {loginError && <p className="text-red-500 text-[10px] font-black uppercase tracking-tight text-center">{loginError}</p>}
+                <button 
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+                >
+                  {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                  {isAuthenticating ? 'Requesting...' : 'Request Access'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setIsRegistering(false); setLoginError(''); }}
+                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
+                >
+                  Already have an account? Login
+                </button>
+              </form>
             ) : (
               <form onSubmit={handleManualLogin} className="space-y-4">
                 <div className="space-y-1.5">
@@ -141,7 +209,7 @@ function AppContent() {
                     onChange={(e) => setManualCredentials({ ...manualCredentials, password: e.target.value })}
                   />
                 </div>
-                {loginError && <p className="text-red-500 text-[10px] font-black uppercase tracking-tight text-center">{loginError}</p>}
+                {loginError && <p className={`text-[10px] font-black uppercase tracking-tight text-center ${loginError.includes('successful') ? 'text-emerald-500' : 'text-red-500'}`}>{loginError}</p>}
                 <button 
                   type="submit"
                   disabled={isAuthenticating}
@@ -149,6 +217,13 @@ function AppContent() {
                 >
                   {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
                   {isAuthenticating ? 'Authenticating...' : 'Authorize Access'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setIsRegistering(true); setLoginError(''); }}
+                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
+                >
+                  No account? Register here
                 </button>
               </form>
             )}
