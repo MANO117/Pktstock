@@ -24,6 +24,8 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
     panchayatId: '',
     beneficiaryId: '',
     invoiceNo: '',
+    permitNumber: '',
+    isOpeningBalance: false,
   });
 
   const materials = useMemo(() => allMaterials.map(m => m.name), [allMaterials]);
@@ -77,6 +79,8 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
       panchayatId: formData.panchayatId,
       beneficiaryId: formData.beneficiaryId,
       invoiceNo: formData.invoiceNo,
+      permitNumber: formData.permitNumber,
+      isOpeningBalance: formData.isOpeningBalance,
       stage: formData.stage,
       timestamp: editData?.timestamp || new Date().toISOString()
     };
@@ -226,31 +230,45 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  placeholder="0.00"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-lg"
-                  value={formData.quantity || ''}
-                  onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                />
-              </div>
-
-              {type === 'RECEIPT' ? (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Invoice / Reference No.</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
                   <input 
-                    type="text" 
-                    placeholder="E.g. INV-2024-001"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
-                    value={formData.invoiceNo || ''}
-                    onChange={(e) => setFormData({ ...formData, invoiceNo: e.target.value })}
+                    type="number" 
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-lg"
+                    value={formData.quantity || ''}
+                    onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
                   />
                 </div>
+
+                {type === 'RECEIPT' && (
+                  <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${formData.isOpeningBalance ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                    <input 
+                      type="checkbox"
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 border-slate-300"
+                      checked={formData.isOpeningBalance || false}
+                      onChange={(e) => setFormData({ ...formData, isOpeningBalance: e.target.checked })}
+                    />
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${formData.isOpeningBalance ? 'text-amber-700' : 'text-slate-600'}`}>Is Opening Balance Entry?</span>
+                  </label>
+                )}
+
+              {type === 'RECEIPT' ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Invoice / Reference No.</label>
+                    <input 
+                      type="text" 
+                      placeholder="E.g. INV-2024-001"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                      value={formData.invoiceNo || ''}
+                      onChange={(e) => setFormData({ ...formData, invoiceNo: e.target.value })}
+                    />
+                  </div>
+                </div>
               ) : (
-                <>
+                <div className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Beneficiary Panchayat</label>
                     <select 
@@ -276,7 +294,18 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                     </select>
                     {(!formData.panchayatId || !formData.schemeId) && <p className="text-[10px] text-slate-400 italic">Select panchayat and scheme first</p>}
                   </div>
-                </>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Permit Number (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="Enter permit #"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                      value={formData.permitNumber || ''}
+                      onChange={(e) => setFormData({ ...formData, permitNumber: e.target.value })}
+                    />
+                  </div>
+                </div>
               )}
             </div>
 
@@ -342,11 +371,14 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                       {tx.type === 'RECEIPT' ? (
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-700">Invoice: {tx.invoiceNo || 'N/A'}</span>
+                          {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
                           <span className="text-[10px] text-slate-400">Scheme entry point</span>
+                          {tx.isOpeningBalance && <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 font-black rounded w-fit mt-1">Opening Balance</span>}
                         </div>
                       ) : (
                         <div className="flex flex-col">
                           <span className="font-bold text-blue-700">{beneficiaries.find(b => b.id === tx.beneficiaryId)?.name}</span>
+                          {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
                           <span className="text-[10px] text-slate-400">{panchayats.find(p => p.id === tx.panchayatId)?.name}</span>
                         </div>
                       )}

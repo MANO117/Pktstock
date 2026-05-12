@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { LayoutDashboard, Database, ClipboardList, BookOpen, BarChart3, Menu, X, LogOut, Shield, Package, User, Lock, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Database, ClipboardList, BookOpen, BarChart3, Menu, X, LogOut, Shield, Package, LogIn, ChevronRight, UserCheck } from 'lucide-react';
 import MasterData from './components/MasterData';
 import StockEntry from './components/StockEntry';
 import StockView from './components/StockView';
@@ -15,88 +15,82 @@ import { motion, AnimatePresence } from 'motion/react';
 import { StockTransaction, SystemUser } from './types';
 import { FirebaseProvider, useFirebase } from './components/FirebaseProvider';
 import { Storage } from './lib/storage';
-import { auth, db } from './lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { auth, signInWithGoogle, signInAsGuest } from './lib/firebase';
 
 type Tab = 'dashboard' | 'master' | 'entry' | 'view' | 'reports' | 'users';
 
 function AppContent() {
-  const { user, loading, systemUsers } = useFirebase();
+  const { user, loading, dataLoading, isApproved, currentUser, systemUsers } = useFirebase();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
-  const [showSignup, setShowSignup] = useState(false);
-  const [signupData, setSignupData] = useState({ username: '', password: '' });
+  const [manualCredentials, setManualCredentials] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Ensure we are "signed in" to Firebase to interact with Firestore
-    if (!user) {
-      await signInAnonymously(auth);
-    }
-
-    if (credentials.username === 'admin' && credentials.password === 'admin123') {
-      setIsLoggedIn(true);
-      setCurrentUser({ id: 'admin', username: 'admin', role: 'ADMIN', status: 'APPROVED', requestedAt: new Date().toISOString() });
-      return;
-    }
-
-    if (credentials.username === 'viewer' && credentials.password === 'viewer123') {
-      setIsLoggedIn(true);
-      setCurrentUser({ id: 'viewer', username: 'viewer', role: 'USER', status: 'APPROVED', requestedAt: new Date().toISOString() });
-      return;
-    }
-
-    const targetUser = systemUsers.find(u => u.username === credentials.username && (u as any).password === credentials.password);
-    
-    if (targetUser) {
-      if (targetUser.status === 'APPROVED') {
-        setIsLoggedIn(true);
-        setCurrentUser(targetUser);
-      } else if (targetUser.status === 'PENDING') {
-        alert('Your access request is still pending admin approval.');
-      } else {
-        alert('Access request denied by administrator.');
-      }
-    } else {
-      alert('Invalid username or password');
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('Login failed:', error);
+      alert('Failed to sign in with Google');
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  // Effect to handle manual login validation after data arrives
+  useEffect(() => {
+    const pendingManual = localStorage.getItem('pending_manual_login');
+    if (pendingManual && user && user.isAnonymous && systemUsers.length > 0) {
+       const { username, password } = JSON.parse(pendingManual);
+       const targetUser = systemUsers.find(u => 
+          u.username.toLowerCase() === username.toLowerCase() && 
+          u.password === password
+       );
+
+       if (targetUser) {
+          if (targetUser.status === 'APPROVED') {
+             localStorage.setItem('manual_user_id', targetUser.id);
+             localStorage.removeItem('pending_manual_login');
+             setIsAuthenticating(false);
+          } else {
+             setLoginError(`Account status: ${targetUser.status}`);
+             localStorage.removeItem('pending_manual_login');
+             auth.signOut();
+             setIsAuthenticating(false);
+          }
+       } else {
+          setLoginError('Invalid username or password');
+          localStorage.removeItem('pending_manual_login');
+          auth.signOut();
+          setIsAuthenticating(false);
+       }
+    }
+  }, [user, systemUsers]);
+
+  const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
+    setIsAuthenticating(true);
+    
+    // Store credentials temporarily (local storage is fine for this short burst)
+    localStorage.setItem('pending_manual_login', JSON.stringify(manualCredentials));
     
     if (!user) {
-      await signInAnonymously(auth);
+       try {
+          await signInAsGuest();
+       } catch (err) {
+          console.error(err);
+          setLoginError('Auth Provider Error: Please enable "Anonymous" login in Firebase Console.');
+          setIsAuthenticating(false);
+       }
     }
-
-    if (systemUsers.find(u => u.username === signupData.username)) {
-      alert('Username already taken.');
-      return;
-    }
-    const newUser: SystemUser = {
-      id: Storage.generateId(),
-      username: signupData.username,
-      status: 'PENDING',
-      role: 'USER',
-      requestedAt: new Date().toISOString()
-    };
-    // Include password in Firestore for this simple migration (In real apps, use Firebase Auth passwords)
-    await Storage.setUserData({ ...newUser, password: signupData.password } as any);
-    alert('Access request submitted! Contact admin for approval.');
-    setShowSignup(false);
-    setSignupData({ username: '', password: '' });
   };
-
 
   const handleLogout = () => {
-    setIsLoggedIn(false);
+    localStorage.removeItem('manual_user_id');
+    auth.signOut();
     setActiveTab('dashboard');
-    setCredentials({ username: '', password: '' });
   };
 
   (window as any).ais_edit_tx = (tx: StockTransaction) => {
@@ -115,7 +109,7 @@ function AppContent() {
     ...(isAdmin ? [{ id: 'users', label: 'User Admin', icon: Shield }] : []),
   ];
 
-  if (loading) {
+  if (loading || (user && dataLoading)) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -123,96 +117,112 @@ function AppContent() {
     );
   }
 
-  if (!isLoggedIn) {
+  if (!user || !isApproved) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md border border-white/10"
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
         >
-          <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center text-white font-black text-3xl mx-auto mb-4 shadow-2xl shadow-blue-600/30">SR</div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase tracking-[0.2em]">Stock Registry</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.1em] mt-2">Authorized Access Only</p>
+          <div className="bg-gradient-to-br from-blue-700 to-indigo-900 p-10 text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+            <div className="relative z-10">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 rounded-2xl mb-6 backdrop-blur-md border border-white/20 shadow-2xl">
+                <Package className="w-12 h-12 text-white" />
+              </div>
+              <h1 className="text-3xl font-black text-white mb-2 tracking-tight">Stock Pro</h1>
+              <p className="text-blue-100/70 text-[10px] font-black uppercase tracking-[0.2em]">Infrastructure Asset Control</p>
+            </div>
           </div>
-
-          {showSignup ? (
-            <form onSubmit={handleSignup} className="space-y-6">
-               <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-4">Request Credentials</h2>
-               <div className="space-y-4">
-                 <div className="space-y-1.5">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
-                   <input 
-                     type="text" 
-                     required
-                     className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-slate-700"
-                     placeholder="Pick a username"
-                     value={signupData.username || ''}
-                     onChange={(e) => setSignupData({ ...signupData, username: e.target.value })}
-                   />
-                 </div>
-                 <div className="space-y-1.5">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                   <input 
-                     type="password" 
-                     required
-                     className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-slate-700"
-                     placeholder="••••••••"
-                     value={signupData.password || ''}
-                     onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
-                   />
-                 </div>
-               </div>
-               <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95">Send Approval Request</button>
-               <button type="button" onClick={() => setShowSignup(false)} className="w-full text-[9px] font-black uppercase text-slate-400 tracking-widest hover:text-slate-900 transition-colors">Already registered? Log in</button>
-            </form>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
-                <input 
-                  type="text" 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
-                  placeholder="Enter username"
-                  value={credentials.username || ''}
-                  onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                />
+          
+          <div className="p-10">
+            {user && isApproved ? (
+              <div className="text-center">
+                <div className="w-20 h-20 bg-emerald-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-sm">
+                  <UserCheck className="w-10 h-10 text-emerald-600" />
+                </div>
+                <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">Identity Verified</h2>
+                <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+                  Welcome back, <span className="text-slate-900 font-bold">{currentUser?.username}</span>. Your access to the central stock registry is active.
+                </p>
+                <div className="animate-pulse flex items-center justify-center gap-2 text-emerald-600 font-black text-[10px] uppercase tracking-widest">
+                  Redirecting to Dashboard...
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                <input 
-                  type="password" 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
-                  placeholder="••••••••"
-                  value={credentials.password || ''}
-                  onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                />
-              </div>
-              <div className="pt-2 flex flex-col gap-4">
+            ) : user ? (
+              <div className="text-center">
+                <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-sm">
+                  <Shield className="w-10 h-10 text-amber-600" />
+                </div>
+                <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">Access Restricted</h2>
+                <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+                  Welcome, <span className="text-slate-900 font-bold">{currentUser?.username || user.email}</span>. 
+                  Your account is securely authenticated, but awaits <span className="text-blue-600 font-bold">Admin Approval</span> to access the portal.
+                </p>
                 <button 
-                  type="submit"
-                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-900/20 hover:bg-black transition-all transform active:scale-95 flex items-center justify-center gap-3"
+                  onClick={handleLogout}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all active:scale-95 border border-slate-200"
                 >
-                  Launch Portal
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setShowSignup(true)}
-                  className="w-full text-[9px] font-black uppercase text-blue-600 tracking-widest hover:underline transition-colors"
-                >
-                  Request New Account Approval
+                  Exit Session
                 </button>
               </div>
-            </form>
-          )}
+            ) : (
+              <div className="space-y-8">
+                <div className="text-center">
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">Internal Portal</h2>
+                  <p className="text-slate-400 text-xs font-medium">Verify your identity to proceed</p>
+                </div>
+                
+                <form onSubmit={handleManualLogin} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
+                    <input 
+                      type="text" 
+                      required
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                      placeholder="Enter username"
+                      value={manualCredentials.username}
+                      onChange={(e) => setManualCredentials({ ...manualCredentials, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+                    <input 
+                      type="password" 
+                      required
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                      placeholder="••••••••"
+                      value={manualCredentials.password}
+                      onChange={(e) => setManualCredentials({ ...manualCredentials, password: e.target.value })}
+                    />
+                  </div>
+                  {loginError && <p className="text-red-500 text-[10px] font-black uppercase tracking-tight text-center">{loginError}</p>}
+                  <button 
+                    type="submit"
+                    disabled={isAuthenticating}
+                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-900/20 hover:bg-black transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+                  >
+                    {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                    {isAuthenticating ? 'Verifying...' : 'Authorize Access'}
+                  </button>
+                </form>
 
-          <p className="text-center text-[9px] text-slate-400 mt-10 leading-relaxed font-black uppercase tracking-[0.2em] opacity-50">
-            Secure Infrastructure Protocol <br/>
-            Central Asset Control v4.0
-          </p>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+                  <div className="relative flex justify-center text-[10px]"><span className="px-3 bg-white text-slate-300 font-black uppercase tracking-widest">or use corporate SSO</span></div>
+                </div>
+
+                <button
+                  onClick={handleGoogleLogin}
+                  className="w-full bg-white border border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 font-bold text-xs uppercase tracking-[0.1em] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 group active:scale-95"
+                >
+                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4" />
+                  <span className="group-hover:text-blue-700 text-[10px]">Continue with Google</span>
+                </button>
+              </div>
+            )}
+          </div>
         </motion.div>
       </div>
     );

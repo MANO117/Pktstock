@@ -76,7 +76,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
       
       const tableData = data.map(t => [
         safeFormat(t.date),
-        t.type,
+        t.type === 'RECEIPT' && t.isOpeningBalance ? 'OPENING BAL' : t.type,
         t.material + (t.stage ? ` (Stage ${t.stage})` : ''),
         t.quantity,
         schemes.find(s => s.id === t.schemeId)?.name || 'N/A',
@@ -108,7 +108,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
 
       const data = filteredData.map(t => ({
         Date: safeFormat(t.date),
-        Type: t.type,
+        Type: t.type === 'RECEIPT' && t.isOpeningBalance ? 'OPENING BALANCE' : t.type,
         Material: t.material + (t.stage ? ` (Stage ${t.stage})` : ''),
         Quantity: t.quantity,
         Scheme: schemes.find(s => s.id === t.schemeId)?.name || 'N/A',
@@ -272,8 +272,8 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
                         {t.stage && <span className="ml-2 px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase rounded border border-blue-100">Stage {t.stage}</span>}
                       </td>
                       <td className="px-6 py-4 text-center">
-                         <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter border ${t.type === 'RECEIPT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                           {t.type}
+                         <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter border ${t.type === 'RECEIPT' ? (t.isOpeningBalance ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100') : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                           {t.type === 'RECEIPT' && t.isOpeningBalance ? 'OPENING BALANCE' : t.type}
                          </span>
                       </td>
                       <td className="px-6 py-4">

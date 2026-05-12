@@ -79,6 +79,14 @@ export const Storage = {
     await setDoc(doc(db, 'users', data.id), data);
   },
   
+  updateUser: async (userId: string, data: Partial<SystemUser>) => {
+    await updateDoc(doc(db, 'users', userId), data);
+  },
+
+  deleteUser: async (userId: string) => {
+    await deleteDoc(doc(db, 'users', userId));
+  },
+  
   approveUser: async (userId: string) => {
     await updateDoc(doc(db, 'users', userId), { status: 'APPROVED' });
   },

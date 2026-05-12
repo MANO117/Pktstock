@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Storage } from '../lib/storage';
 import { useFirebase } from './FirebaseProvider';
 import { MaterialType } from '../types';
-import { Calendar, ArrowRight, ArrowLeft, ClipboardList, Printer } from 'lucide-react';
+import { Calendar, ArrowRight, ArrowLeft, ClipboardList, Printer, Info } from 'lucide-react';
 import { format, subDays, addDays, parseISO } from 'date-fns';
 
 export default function StockView() {
@@ -57,6 +57,13 @@ export default function StockView() {
             <ArrowRight className="w-5 h-5 text-slate-600" />
           </button>
         </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-4">
+        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-800 leading-relaxed">
+          <span className="font-bold uppercase tracking-widest text-[10px]">Registry Protocol:</span> The opening balance is derived from the cumulative closing balance of all prior fiscal periods. Manual opening entries logged as receipts will be factored into this baseline automatically.
+        </p>
       </div>
 
       <div className="space-y-12">

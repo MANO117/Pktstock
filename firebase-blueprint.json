@@ -72,8 +72,10 @@
         "beneficiaryId": { "type": "string" },
         "invoiceNo": { "type": "string" },
         "invoiceUrl": { "type": "string" },
+        "permitNumber": { "type": "string" },
         "notes": { "type": "string" },
         "stage": { "type": "number" },
+        "isOpeningBalance": { "type": "boolean" },
         "timestamp": { "type": "string" }
       },
       "required": ["id", "date", "type", "material", "quantity", "schemeId", "timestamp"]
@@ -85,6 +87,7 @@
       "properties": {
         "id": { "type": "string" },
         "username": { "type": "string" },
+        "password": { "type": "string" },
         "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
         "role": { "type": "string", "enum": ["ADMIN", "USER"] },
         "requestedAt": { "type": "string" }

@@ -755,13 +755,11 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                       </button>
                       <button 
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           if (confirmDeleteId === b.id) {
-                            const updated = beneficiaries.filter(i => i.id !== b.id);
-                            setBeneficiaries(updated);
-                            Storage.setBeneficiaries(updated);
+                            await Storage.deleteBeneficiary(b.id);
                             setConfirmDeleteId(null);
                           } else {
                             setConfirmDeleteId(b.id);

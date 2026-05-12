@@ -51,8 +51,10 @@ export interface StockTransaction {
   beneficiaryId?: string;
   invoiceNo?: string;
   invoiceUrl?: string; // Simulated
+  permitNumber?: string;
   notes?: string;
   stage?: number;
+  isOpeningBalance?: boolean;
   timestamp: string;
 }
 
