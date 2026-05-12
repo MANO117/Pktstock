@@ -89,59 +89,58 @@ function AppContent() {
 
   if (!user || !isApproved) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-100 to-slate-200">
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] w-full max-w-md overflow-hidden border border-white"
         >
-          <div className="bg-gradient-to-br from-indigo-700 to-slate-900 p-10 text-center relative overflow-hidden">
+          <div className="bg-slate-900 p-10 text-center relative">
             <div className="relative z-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 rounded-2xl mb-6 backdrop-blur-md border border-white/20 shadow-2xl">
-                <Package className="w-12 h-12 text-white" />
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 rounded-2xl mb-6 shadow-lg shadow-blue-500/20">
+                <Package className="w-8 h-8 text-white" />
               </div>
-              <h1 className="text-3xl font-black text-white mb-2 tracking-tight">Stock Pro</h1>
-              <p className="text-blue-100/70 text-[10px] font-black uppercase tracking-[0.2em]">Infrastructure Asset Control</p>
+              <h1 className="text-2xl font-black text-white tracking-tight">Stock Pro</h1>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Registry Management v3.0</p>
             </div>
           </div>
           
           <div className="p-10 space-y-8">
             <div className="text-center">
-              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
-                {user ? 'Account Pending' : (isRegistering ? 'Create Account' : 'Secure Login')}
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                {user ? 'Awaiting Approval' : (isRegistering ? 'Create Account' : 'Welcome Back')}
               </h2>
-              <p className="text-slate-400 text-xs font-medium">
-                {user ? 'Awaiting administrator approval' : (isRegistering ? 'Request access to the system' : 'Enter internal credentials to proceed')}
+              <p className="text-slate-500 text-sm mt-1">
+                {user ? 'Your account is pending administrator review' : (isRegistering ? 'Register your credentials' : 'Login to access the registry')}
               </p>
             </div>
 
             {user && !isApproved ? (
               <div className="space-y-6">
-                <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-center">
-                  <Shield className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-                  <p className="text-xs text-amber-800 font-bold leading-relaxed uppercase tracking-widest">
-                    Approval Required
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
+                  <UserCheck className="w-8 h-8 text-blue-500 mx-auto mb-3" />
+                  <p className="text-xs text-slate-600 font-bold uppercase tracking-tight">
+                    Identity: {user.username}
                   </p>
-                  <p className="text-[10px] text-amber-700/70 mt-1">
-                    Username: <span className="text-slate-900">{user.username}</span>
+                  <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+                    Access will be granted once the administrator verifies your account.
                   </p>
                 </div>
                 <button 
                   onClick={handleLogout}
-                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
+                  className="w-full text-slate-400 hover:text-slate-600 font-bold text-xs uppercase tracking-widest py-2 transition-colors"
                 >
-                  Return to Login
+                  Sign Out
                 </button>
               </div>
             ) : isRegistering ? (
-              <form onSubmit={handleRegister} className="space-y-4">
+              <form onSubmit={handleRegister} className="space-y-5">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
                   <input 
-                    type="text" 
-                    required
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
-                    placeholder="Enter your name"
+                    type="text" required
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500/50 transition-all text-sm font-medium"
+                    placeholder="John Doe"
                     value={regFormData.fullName}
                     onChange={(e) => setRegFormData({ ...regFormData, fullName: e.target.value })}
                   />
@@ -149,10 +148,9 @@ function AppContent() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
                   <input 
-                    type="text" 
-                    required
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
-                    placeholder="Choose username"
+                    type="text" required
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500/50 transition-all text-sm font-medium"
+                    placeholder="johndoe"
                     value={regFormData.username}
                     onChange={(e) => setRegFormData({ ...regFormData, username: e.target.value })}
                   />
@@ -160,40 +158,37 @@ function AppContent() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
                   <input 
-                    type="password" 
-                    required
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    type="password" required
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500/50 transition-all text-sm font-medium"
                     placeholder="••••••••"
                     value={regFormData.password}
                     onChange={(e) => setRegFormData({ ...regFormData, password: e.target.value })}
                   />
                 </div>
-                {loginError && <p className="text-red-500 text-[10px] font-black uppercase tracking-tight text-center">{loginError}</p>}
+                {loginError && <p className="text-red-500 text-[10px] font-bold uppercase tracking-tight text-center bg-red-50 py-2 rounded-lg">{loginError}</p>}
                 <button 
                   type="submit"
                   disabled={isAuthenticating}
-                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
                 >
-                  {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                  {isAuthenticating ? 'Requesting...' : 'Request Access'}
+                  {isAuthenticating ? 'Processing...' : 'Request Access'}
                 </button>
                 <button 
                   type="button"
                   onClick={() => { setIsRegistering(false); setLoginError(''); }}
-                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
+                  className="w-full text-slate-400 hover:text-slate-600 font-bold text-[10px] uppercase tracking-widest"
                 >
-                  Already have an account? Login
+                  Back to Login
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleManualLogin} className="space-y-4">
+              <form onSubmit={handleManualLogin} className="space-y-5">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
                   <input 
-                    type="text" 
-                    required
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
-                    placeholder="Enter username"
+                    type="text" required
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500/50 transition-all text-sm font-medium"
+                    placeholder="admin"
                     value={manualCredentials.username}
                     onChange={(e) => setManualCredentials({ ...manualCredentials, username: e.target.value })}
                   />
@@ -201,38 +196,40 @@ function AppContent() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
                   <input 
-                    type="password" 
-                    required
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all font-bold text-slate-700"
+                    type="password" required
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500/50 transition-all text-sm font-medium"
                     placeholder="••••••••"
                     value={manualCredentials.password}
                     onChange={(e) => setManualCredentials({ ...manualCredentials, password: e.target.value })}
                   />
                 </div>
-                {loginError && <p className={`text-[10px] font-black uppercase tracking-tight text-center ${loginError.includes('successful') ? 'text-emerald-500' : 'text-red-500'}`}>{loginError}</p>}
+                {loginError && (
+                  <p className={`text-[10px] font-bold uppercase tracking-tight text-center py-2 rounded-lg ${loginError.includes('successful') ? 'text-emerald-600 bg-emerald-50' : 'text-red-500 bg-red-50'}`}>
+                    {loginError}
+                  </p>
+                )}
                 <button 
                   type="submit"
                   disabled={isAuthenticating}
-                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-900/20 hover:bg-black transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+                  className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-slate-900/20 hover:bg-black transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
                 >
-                  {isAuthenticating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                  {isAuthenticating ? 'Authenticating...' : 'Authorize Access'}
+                  {isAuthenticating && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                  {isAuthenticating ? 'Verifying...' : 'Login to Dashboard'}
                 </button>
-                <button 
-                  type="button"
-                  onClick={() => { setIsRegistering(true); setLoginError(''); }}
-                  className="w-full text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest py-2"
-                >
-                  No account? Register here
-                </button>
+                <div className="flex flex-col gap-2 pt-2">
+                  <button 
+                    type="button"
+                    onClick={() => { setIsRegistering(true); setLoginError(''); }}
+                    className="w-full text-slate-400 hover:text-slate-600 font-bold text-[10px] uppercase tracking-widest"
+                  >
+                    Create new account
+                  </button>
+                  <p className="text-[9px] text-slate-300 text-center font-medium mt-4">
+                    Shared on GitHub? Try <span className="font-bold text-slate-400">admin / admin</span>
+                  </p>
+                </div>
               </form>
             )}
-            
-            <div className="text-center">
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                Infrastructure Asset Control System v3.0 (Internal)
-              </p>
-            </div>
           </div>
         </motion.div>
       </div>
