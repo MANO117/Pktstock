@@ -40,32 +40,48 @@ function AppContent() {
 
   // Effect to handle manual login validation after data arrives
   useEffect(() => {
-    const pendingManual = localStorage.getItem('pending_manual_login');
-    if (pendingManual && user && user.isAnonymous && systemUsers.length > 0) {
-       const { username, password } = JSON.parse(pendingManual);
-       const targetUser = systemUsers.find(u => 
-          u.username.toLowerCase() === username.toLowerCase() && 
-          u.password === password
-       );
+    const checkManualEscalation = async () => {
+      const pendingManual = localStorage.getItem('pending_manual_login');
+      if (pendingManual && user && user.isAnonymous && systemUsers.length > 0) {
+         const { username, password } = JSON.parse(pendingManual);
+         const targetUser = systemUsers.find(u => 
+            u.username.toLowerCase() === username.toLowerCase() && 
+            u.password === password
+         );
+  
+         if (targetUser) {
+            if (targetUser.status === 'APPROVED') {
+               try {
+                  // Escalation: Sync the anonymous UID record with the target account's status/role
+                  await Storage.updateUser(user.uid, {
+                    role: targetUser.role,
+                    status: 'APPROVED',
+                    username: targetUser.username
+                  });
+                  localStorage.setItem('manual_user_id', targetUser.id);
+                  localStorage.removeItem('pending_manual_login');
+                  setIsAuthenticating(false);
+               } catch (err) {
+                  console.error('Escalation failed:', err);
+                  setLoginError('Permission sync failed. Please try again.');
+                  setIsAuthenticating(false);
+               }
+            } else {
+               setLoginError(`Account status: ${targetUser.status}`);
+               localStorage.removeItem('pending_manual_login');
+               auth.signOut();
+               setIsAuthenticating(false);
+            }
+         } else {
+            setLoginError('Invalid username or password');
+            localStorage.removeItem('pending_manual_login');
+            auth.signOut();
+            setIsAuthenticating(false);
+         }
+      }
+    };
 
-       if (targetUser) {
-          if (targetUser.status === 'APPROVED') {
-             localStorage.setItem('manual_user_id', targetUser.id);
-             localStorage.removeItem('pending_manual_login');
-             setIsAuthenticating(false);
-          } else {
-             setLoginError(`Account status: ${targetUser.status}`);
-             localStorage.removeItem('pending_manual_login');
-             auth.signOut();
-             setIsAuthenticating(false);
-          }
-       } else {
-          setLoginError('Invalid username or password');
-          localStorage.removeItem('pending_manual_login');
-          auth.signOut();
-          setIsAuthenticating(false);
-       }
-    }
+    checkManualEscalation();
   }, [user, systemUsers]);
 
   const handleManualLogin = async (e: React.FormEvent) => {
