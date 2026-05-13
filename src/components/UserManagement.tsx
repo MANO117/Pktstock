@@ -6,8 +6,9 @@ import { Users, UserCheck, UserX, Clock, Shield, Key, Edit2, Plus, X as CloseIco
 import { format, parseISO } from 'date-fns';
 
 export default function UserManagement() {
-  const { systemUsers: users } = useData();
+  const { systemUsers: users, refreshData } = useData();
   const [isAdding, setIsAdding] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [formData, setFormData] = useState({
     username: '',
@@ -18,32 +19,50 @@ export default function UserManagement() {
   });
 
   const handleApprove = async (id: string) => {
-    await Storage.approveUser(id);
+    setIsProcessing(true);
+    try {
+      await Storage.approveUser(id);
+      await refreshData();
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleReject = async (id: string) => {
-    await Storage.rejectUser(id);
+    setIsProcessing(true);
+    try {
+      await Storage.rejectUser(id);
+      await refreshData();
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUser) {
-      await Storage.updateUser(editingUser.id, formData);
-      setEditingUser(null);
-    } else {
-      const newUser: SystemUser = {
-        id: Storage.generateId(),
-        username: formData.username,
-        fullName: formData.fullName,
-        password: formData.password,
-        role: formData.role,
-        status: formData.status,
-        requestedAt: new Date().toISOString()
-      };
-      await Storage.setUserData(newUser);
-      setIsAdding(false);
+    setIsProcessing(true);
+    try {
+      if (editingUser) {
+        await Storage.updateUser(editingUser.id, formData);
+        setEditingUser(null);
+      } else {
+        const newUser: SystemUser = {
+          id: Storage.generateId(),
+          username: formData.username,
+          fullName: formData.fullName,
+          password: formData.password,
+          role: formData.role,
+          status: formData.status,
+          requestedAt: new Date().toISOString()
+        };
+        await Storage.setUserData(newUser);
+        setIsAdding(false);
+      }
+      await refreshData();
+      setFormData({ username: '', fullName: '', password: '', role: 'USER', status: 'APPROVED' });
+    } finally {
+      setIsProcessing(false);
     }
-    setFormData({ username: '', fullName: '', password: '', role: 'USER', status: 'APPROVED' });
   };
 
   const startEdit = (user: SystemUser) => {
@@ -59,7 +78,13 @@ export default function UserManagement() {
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
-      await Storage.deleteUser(id);
+      setIsProcessing(true);
+      try {
+        await Storage.deleteUser(id);
+        await refreshData();
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -148,10 +173,14 @@ export default function UserManagement() {
                  </div>
               </div>
               <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                 <button onClick={() => { setIsAdding(false); setEditingUser(null); }} type="button" className="px-6 py-3 text-[10px] font-black uppercase text-slate-500 hover:text-slate-900 tracking-widest">Cancel</button>
-                 <button type="submit" className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-600/20 active:scale-95">
-                    <Save className="w-4 h-4" />
-                    Commit Changes
+                 <button onClick={() => { setIsAdding(false); setEditingUser(null); }} type="button" className="px-6 py-3 text-[10px] font-black uppercase text-slate-500 hover:text-slate-900 tracking-widest disabled:opacity-50" disabled={isProcessing}>Cancel</button>
+                 <button 
+                  type="submit" 
+                  disabled={isProcessing}
+                  className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-50"
+                 >
+                    <Save className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} />
+                    {isProcessing ? 'Processing...' : 'Commit Changes'}
                  </button>
               </div>
            </form>
@@ -161,6 +190,7 @@ export default function UserManagement() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
         <div className="px-8 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">System User Directory</h4>
+           {isProcessing && <div className="text-[10px] font-bold text-blue-600 animate-pulse uppercase tracking-widest">🔄 Syncing...</div>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -175,7 +205,7 @@ export default function UserManagement() {
             </thead>
             <tbody className="divide-y divide-slate-50 text-xs">
               {users.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)).map(u => (
-                <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
+                <tr key={u.id} className={`hover:bg-slate-50 transition-colors group ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
                   <td className="px-8 py-4">
                     <div className="flex items-center gap-3">
                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-600 text-[10px]">{u.fullName ? u.fullName[0].toUpperCase() : u.username[0].toUpperCase()}</div>
@@ -209,11 +239,11 @@ export default function UserManagement() {
                   </td>
                   <td className="px-8 py-4">
                     <div className="flex items-center justify-end gap-2">
-                       <button onClick={() => startEdit(u)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Profile"><Edit2 className="w-4 h-4" /></button>
+                       <button onClick={() => startEdit(u)} disabled={isProcessing} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-30" title="Edit Profile"><Edit2 className="w-4 h-4" /></button>
                        {u.status === 'PENDING' && (
-                          <button onClick={() => handleApprove(u.id)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Fast Approve"><UserCheck className="w-4 h-4" /></button>
+                          <button onClick={() => handleApprove(u.id)} disabled={isProcessing} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-30" title="Fast Approve"><UserCheck className="w-4 h-4" /></button>
                        )}
-                       <button onClick={() => handleDelete(u.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Terminate Account"><Trash2 className="w-4 h-4" /></button>
+                       <button onClick={() => handleDelete(u.id)} disabled={isProcessing} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-30" title="Terminate Account"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>

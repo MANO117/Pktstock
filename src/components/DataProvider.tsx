@@ -49,10 +49,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setTransactions(data.transactions || []);
       setSystemUsers(data.users || []);
       
+      // Cache data for faster initial load next time
+      localStorage.setItem('cached_stock_pro_data', JSON.stringify(data));
+      
       // Update local user state if changed in backend
       if (user) {
         const updatedUser = data.users.find((u: any) => u.id === user.id);
-        if (updatedUser) setUser(updatedUser);
+        if (updatedUser) {
+          setUser(updatedUser);
+          localStorage.setItem('app_user', JSON.stringify(updatedUser));
+        }
       }
     } catch (e) {
       console.error("Failed to fetch data", e);
@@ -66,10 +72,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
+
+    // Try to load cached data for instant appearance
+    const cachedDataString = localStorage.getItem('cached_stock_pro_data');
+    if (cachedDataString) {
+      const data = JSON.parse(cachedDataString);
+      setSchemes(data.schemes || []);
+      setOverseers(data.overseers || []);
+      setPanchayats(data.panchayats || []);
+      setBeneficiaries(data.beneficiaries || []);
+      setMaterials(data.materials || []);
+      setTransactions(data.transactions || []);
+      setSystemUsers(data.users || []);
+      setDataLoading(false); // We have cached data, don't block
+    }
+
     setLoading(false);
     refreshData();
     
-    const interval = setInterval(refreshData, 5000);
+    const interval = setInterval(refreshData, 15000); // Relaxed poll interval to 15s instead of 5s
     return () => clearInterval(interval);
   }, []);
 
