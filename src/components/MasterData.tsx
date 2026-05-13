@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
   const { schemes, overseers, panchayats, beneficiaries, materials } = useData();
   const [searchTerm, setSearchTerm] = useState('');
+  const [newScheme, setNewScheme] = useState({ name: '', year: new Date().getFullYear().toString() });
   
   const filteredBeneficiaries = React.useMemo(() => {
     if (!searchTerm) return beneficiaries.slice(0, 100); // Limit initial view
