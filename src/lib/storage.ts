@@ -7,13 +7,17 @@ const API_BASE = '/api';
 const Engine = {
   isLocal: false,
 
+  getMode() {
+    return this.isLocal ? 'LocalStorage' : 'Backend API';
+  },
+
   async request(path: string, options: any = {}) {
     if (this.isLocal) return this.localRequest(path, options);
 
     try {
       const res = await fetch(`${API_BASE}${path}`, options);
-      if (res.status === 404 || res.status === 504) {
-        console.warn('API unavailable, falling back to LocalStorage');
+      if (res.status === 404 || res.status === 504 || res.status === 405) {
+        console.warn('API unavailable or method blocked, falling back to LocalStorage');
         this.isLocal = true;
         return this.localRequest(path, options);
       }
@@ -43,15 +47,18 @@ const Engine = {
 
     if (path === '/login' && options.method === 'POST') {
       const { username, password } = JSON.parse(options.body);
-      const user = data.users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
-      if (!user) throw new Error('Invalid credentials');
-      if (user.status !== 'APPROVED') throw new Error(`Status: ${user.status}`);
+      const user = data.users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && String(u.password) === String(password));
+      if (!user) {
+        console.error('Local Login Failed: User not found or password mismatch', { providedUsername: username });
+        throw new Error('Invalid username or password (Local Mode)');
+      }
+      if (user.status !== 'APPROVED') throw new Error(`Access Denied: Account status is ${user.status}`);
       return { success: true, user };
     }
 
     if (path === '/register' && options.method === 'POST') {
       const newUser = JSON.parse(options.body);
-      if (data.users.find((u: any) => u.username === newUser.username)) throw new Error('User exists');
+      if (data.users.find((u: any) => u.username.toLowerCase() === newUser.username.toLowerCase())) throw new Error('User exists');
       data.users.push({ ...newUser, id: Date.now().toString(), status: 'PENDING', role: 'USER' });
       save();
       return { success: true };
@@ -169,47 +176,39 @@ export const Storage = {
     return matTransactions.reduce((acc, t) => acc + (t.type === 'RECEIPT' ? t.quantity : -t.quantity), 0);
   },
 
-  setUserData: async (data: SystemUser) => {
-    await fetch(`${API_BASE}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  },
+  setUserData: (data: SystemUser) => Engine.request('/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
   
-  updateUser: async (userId: string, data: Partial<SystemUser>) => {
-    await fetch(`${API_BASE}/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  },
+  updateUser: (userId: string, data: Partial<SystemUser>) => Engine.request(`/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
 
-  deleteUser: async (userId: string) => {
-    await fetch(`${API_BASE}/users/${userId}`, { method: 'DELETE' });
-  },
+  deleteUser: (userId: string) => Engine.request(`/users/${userId}`, { method: 'DELETE' }),
   
-  approveUser: async (userId: string) => {
-    await fetch(`${API_BASE}/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'APPROVED' })
-    });
-  },
+  approveUser: (userId: string) => Engine.request(`/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'APPROVED' })
+  }),
   
-  rejectUser: async (userId: string) => {
-    await fetch(`${API_BASE}/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'REJECTED' })
-    });
-  },
+  rejectUser: (userId: string) => Engine.request(`/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'REJECTED' })
+  }),
 
   generateId: (): string => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
-  }
+  },
+
+  getEngineMode: () => Engine.getMode()
 };
 

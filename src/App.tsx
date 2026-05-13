@@ -19,7 +19,7 @@ import { Storage } from './lib/storage';
 type Tab = 'dashboard' | 'master' | 'entry' | 'view' | 'reports' | 'users';
 
 function AppContent() {
-  const { user, loading, dataLoading, isApproved, currentUser, systemUsers, login, logout } = useData();
+  const { user, loading, dataLoading, isApproved, currentUser, systemUsers, login, logout, refreshData } = useData();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
@@ -127,6 +127,12 @@ function AppContent() {
                   </p>
                 </div>
                 <button 
+                  onClick={() => refreshData()}
+                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all transform active:scale-[0.98] flex items-center justify-center gap-3"
+                >
+                  Check Approval Status
+                </button>
+                <button 
                   onClick={handleLogout}
                   className="w-full text-slate-400 hover:text-slate-600 font-bold text-xs uppercase tracking-widest py-2 transition-colors"
                 >
@@ -224,8 +230,11 @@ function AppContent() {
                   >
                     Create new account
                   </button>
-                  <p className="text-[9px] text-slate-300 text-center font-medium mt-4">
-                    Shared on GitHub? Try <span className="font-bold text-slate-400">admin / admin</span>
+                  <p className="text-[10px] text-slate-400 text-center font-bold mt-4 bg-slate-50 py-2 rounded-lg border border-slate-100">
+                    Admin Access (Test): <span className="text-blue-600">admin</span> / <span className="text-blue-600">admin</span>
+                  </p>
+                  <p className="text-[8px] text-slate-300 text-center uppercase tracking-tighter mt-2 opacity-50">
+                    Engine Mode: {Storage.getEngineMode()}
                   </p>
                 </div>
               </form>

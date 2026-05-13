@@ -26,7 +26,7 @@ async function loadData() {
           id: "admin-001",
           username: "admin",
           fullName: "System Administrator",
-          password: "admin123",
+          password: "admin",
           role: "ADMIN",
           status: "APPROVED",
           requestedAt: new Date().toISOString()
@@ -54,6 +54,7 @@ app.get("/api/data", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
+  console.log(`Login attempt: ${username}`);
   const data = await loadData();
   const user = data.users.find((u: any) => 
     u.username.toLowerCase() === username.toLowerCase() && u.password === password
@@ -61,12 +62,15 @@ app.post("/api/login", async (req, res) => {
 
   if (user) {
     if (user.status === 'APPROVED') {
+      console.log(`Login success: ${username}`);
       res.json({ success: true, user });
     } else {
-      res.status(403).json({ success: false, error: `Account status: ${user.status}` });
+      console.log(`Login blocked (status ${user.status}): ${username}`);
+      res.status(403).json({ success: false, error: `Account status: ${user.status}. Please wait for admin approval.` });
     }
   } else {
-    res.status(401).json({ success: false, error: "Invalid username or password" });
+    console.log(`Login failed: ${username}`);
+    res.status(401).json({ success: false, error: "Invalid username or password. Check credentials and CAPS lock." });
   }
 });
 
