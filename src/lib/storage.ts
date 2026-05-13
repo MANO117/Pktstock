@@ -179,6 +179,38 @@ export const Storage = {
     };
   },
 
+  calculateAllDailyBalances: (materials: string[], targetDate: string, transactions: StockTransaction[]) => {
+    const targetDateObj = parseISO(targetDate);
+    const targetStart = startOfDay(targetDateObj);
+    const targetEnd = endOfDay(targetDateObj);
+    
+    const results: Record<string, {openingBalance: number, receipts: number, issues: number, closingBalance: number}> = {};
+    materials.forEach(m => {
+      results[m] = { openingBalance: 0, receipts: 0, issues: 0, closingBalance: 0 };
+    });
+
+    for (const t of transactions) {
+      if (!results[t.material]) continue;
+      
+      const tDate = parseISO(t.date);
+      const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
+
+      if (tDate < targetStart) {
+        results[t.material].openingBalance += amount;
+      } else if (tDate <= targetEnd) {
+        if (t.type === 'RECEIPT') results[t.material].receipts += t.quantity;
+        else results[t.material].issues += t.quantity;
+      }
+    }
+
+    Object.keys(results).forEach(m => {
+      const r = results[m];
+      r.closingBalance = r.openingBalance + r.receipts - r.issues;
+    });
+
+    return results;
+  },
+
   getStockBalance: (material: MaterialType, transactions: StockTransaction[]): number => {
     const matTransactions = transactions.filter(t => t.material === material);
     return matTransactions.reduce((acc, t) => acc + (t.type === 'RECEIPT' ? t.quantity : -t.quantity), 0);

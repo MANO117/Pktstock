@@ -13,10 +13,14 @@ export default function StockView() {
   const materialNames = materialsData.map(m => m.name).join(',');
 
   useEffect(() => {
-    const dailyBalances = materialsData.map(m => ({
-      material: m.name,
-      ...Storage.calculateDailyBalance(m.name as any, date, transactions)
+    const materialNamesList = materialsData.map(m => m.name);
+    const allBalances = Storage.calculateAllDailyBalances(materialNamesList, date, transactions);
+    
+    const dailyBalances = materialNamesList.map(name => ({
+      material: name,
+      ...allBalances[name]
     }));
+    
     setBalances(dailyBalances);
   }, [date, materialNames, transactions]);
 

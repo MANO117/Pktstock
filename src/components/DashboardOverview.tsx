@@ -80,49 +80,60 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
     return { daily: d, weekly: w, monthly: m, yearly: y };
   }, [transactions]);
 
-  // Rankings
+  // Rankings optimized to avoid nested filters over large datasets
   const rankings = useMemo(() => {
-    const oIssues = overseers.map(o => {
-      const pIds = panchayats.filter(p => p.overseerId === o.id).map(p => p.id);
-      const totalQty = transactions
-        .filter(t => t.type === 'ISSUE' && t.panchayatId && pIds.includes(t.panchayatId))
-        .reduce((acc, t) => acc + t.quantity, 0);
-      return { ...o, totalQty };
-    }).sort((a, b) => b.totalQty - a.totalQty);
+    const panchayatTotals: Record<string, number> = {};
+    for (const t of transactions) {
+      if (t.type === 'ISSUE' && t.panchayatId) {
+        panchayatTotals[t.panchayatId] = (panchayatTotals[t.panchayatId] || 0) + t.quantity;
+      }
+    }
 
-    const pAllocations = panchayats.map(p => {
-      const totalQty = transactions
-        .filter(t => t.type === 'ISSUE' && t.panchayatId === p.id)
-        .reduce((acc, t) => acc + t.quantity, 0);
-      return { ...p, totalQty };
+    const pAllocations = panchayats.map(p => ({
+      ...p,
+      totalQty: panchayatTotals[p.id] || 0
+    })).sort((a, b) => b.totalQty - a.totalQty);
+
+    const oIssues = overseers.map(o => {
+      const myPanchayats = panchayats.filter(p => p.overseerId === o.id);
+      const totalQty = myPanchayats.reduce((sum, p) => sum + (panchayatTotals[p.id] || 0), 0);
+      return { ...o, totalQty };
     }).sort((a, b) => b.totalQty - a.totalQty);
 
     return { overseerIssues: oIssues, panchayatAllocations: pAllocations };
   }, [transactions, overseers, panchayats]);
 
-  // Table Balances calculation
+  // Table Balances optimized calculation
   const tableBalances = useMemo(() => {
     const targetStart = startOfDay(parseISO(dateRange.start));
     const targetEnd = endOfDay(parseISO(dateRange.end));
 
-    return materials.filter(m => selectedMaterial === 'All' || m === selectedMaterial).map(material => {
-      let opening = 0, receipts = 0, issues = 0;
-
-      for (const t of transactions) {
-        if (t.material !== material) continue;
-        const tDate = parseISO(t.date);
-        const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
-
-        if (tDate < targetStart) {
-          opening += amount;
-        } else if (tDate <= targetEnd) {
-          if (t.type === 'RECEIPT') receipts += t.quantity;
-          else issues += t.quantity;
-        }
-      }
-
-      return { material, opening, receipts, issues, closing: opening + receipts - issues };
+    const stats: Record<string, {opening: number, receipts: number, issues: number}> = {};
+    materials.forEach(m => {
+      stats[m] = { opening: 0, receipts: 0, issues: 0 };
     });
+
+    for (const t of transactions) {
+      if (!stats[t.material]) continue;
+      const tDate = parseISO(t.date);
+      
+      if (tDate < targetStart) {
+        stats[t.material].opening += (t.type === 'RECEIPT' ? t.quantity : -t.quantity);
+      } else if (tDate <= targetEnd) {
+        if (t.type === 'RECEIPT') stats[t.material].receipts += t.quantity;
+        else stats[t.material].issues += t.quantity;
+      }
+    }
+
+    return Object.entries(stats)
+      .filter(([m]) => selectedMaterial === 'All' || m === selectedMaterial)
+      .map(([material, s]) => ({
+        material,
+        opening: s.opening,
+        receipts: s.receipts,
+        issues: s.issues,
+        closing: s.opening + s.receipts - s.issues
+      }));
   }, [transactions, materials, dateRange, selectedMaterial]);
 
   const receiptsCount = filteredTransactions.filter(t => t.type === 'RECEIPT').length;

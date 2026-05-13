@@ -63,6 +63,39 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
     return { receipts, issues };
   }, [filtered]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  const paginatedData = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+  }, [filtered, currentPage]);
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+  // Pre-calculate maps for fast lookup
+  const panchayatMap = React.useMemo(() => {
+    const map: Record<string, Panchayat> = {};
+    panchayats.forEach(p => map[p.id] = p);
+    return map;
+  }, [panchayats]);
+
+  const overseerMap = React.useMemo(() => {
+    const map: Record<string, Overseer> = {};
+    overseers.forEach(o => map[o.id] = o);
+    return map;
+  }, [overseers]);
+
+  const beneficiaryMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    beneficiaries.forEach(b => map[b.id] = b.name);
+    return map;
+  }, [beneficiaries]);
+
   const safeFormat = (dateStr: string) => {
     try {
       if (!dateStr) return 'N/A';
@@ -265,9 +298,9 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs">
-                {filtered.map(t => {
-                  const panchayat = panchayats.find(p => p.id === t.panchayatId);
-                  const overseer = overseers.find(o => o.id === panchayat?.overseerId);
+                {paginatedData.map(t => {
+                  const panchayat = t.panchayatId ? panchayatMap[t.panchayatId] : null;
+                  const overseer = panchayat ? overseerMap[panchayat.overseerId] : null;
                   return (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-8 py-4 text-slate-400 font-medium">{format(parseISO(t.date), 'MMM d, yyyy')}</td>
@@ -283,7 +316,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
                       <td className="px-6 py-4">
                          <div className="flex flex-col">
                             <span className="font-bold text-slate-800">
-                              {beneficiaries.find(b => b.id === t.beneficiaryId)?.name || (t.type === 'RECEIPT' ? 'Main Stock Entry' : 'Manual Issue')}
+                              {t.beneficiaryId ? beneficiaryMap[t.beneficiaryId] : (t.type === 'RECEIPT' ? 'Main Stock Entry' : 'Manual Issue')}
                             </span>
                             <span className="text-[10px] text-slate-400">{panchayat?.name || 'Central Store'}</span>
                          </div>
@@ -294,8 +327,8 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
                            <span className="font-bold text-slate-700">{overseer?.name || 'System Admin'}</span>
                            {onEdit && isAdmin && (
                              <button 
-                               onClick={() => onEdit(t)} 
-                               className="ml-auto text-blue-400 hover:text-blue-600"
+                                onClick={() => onEdit(t)} 
+                                className="ml-auto text-blue-400 hover:text-blue-600"
                              >
                                <Edit2 className="w-3 h-3" />
                              </button>
@@ -321,6 +354,49 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
               </tbody>
             </table>
           </div>
+
+          {/* Reports Table Pagination */}
+          {totalPages > 1 && (
+            <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Showing {Math.min(filtered.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filtered.length, currentPage * itemsPerPage)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Prev
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    let pageNum = currentPage;
+                    if (currentPage <= 3) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                    else pageNum = currentPage - 2 + i;
+                    if (pageNum <= 0 || pageNum > totalPages) return null;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-500 hover:bg-white border border-transparent hover:border-slate-200'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

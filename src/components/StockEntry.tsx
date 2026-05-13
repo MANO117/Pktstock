@@ -51,6 +51,25 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
   }, [editData, materials]);
 
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  const filteredTransactions = useMemo(() => {
+    const term = search.toLowerCase();
+    return transactions.filter(t => 
+      t.material.toLowerCase().includes(term) || 
+      (t.type === 'RECEIPT' ? 'receipt' : 'issue').includes(term) ||
+      t.invoiceNo?.toLowerCase().includes(term) ||
+      t.permitNumber?.toLowerCase().includes(term)
+    );
+  }, [transactions, search]);
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredTransactions.slice(start, start + itemsPerPage);
+  }, [filteredTransactions, currentPage]);
+
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
 
   const filteredBeneficiaries = useMemo(() => {
     if (!formData.panchayatId || !formData.schemeId) return [];
@@ -360,7 +379,7 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs">
-                {transactions.filter(t => t.material.toLowerCase().includes(search.toLowerCase()) || (t.type === 'RECEIPT' ? 'receipt' : 'issue').includes(search.toLowerCase())).map(tx => (
+                {paginatedTransactions.map(tx => (
                   <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-8 py-4 text-slate-400 font-medium">{format(parseISO(tx.date), 'MMM d, yyyy')}</td>
                     <td className="px-6 py-4">
@@ -430,16 +449,62 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                     </td>
                   </tr>
                 ))}
-                {transactions.length === 0 && (
+                {filteredTransactions.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-8 py-20 text-center">
-                      <p className="text-slate-400 font-medium italic">No recent transactions to display</p>
+                      <p className="text-slate-400 font-medium italic">No transactions match your search</p>
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="px-8 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Showing {Math.min(filteredTransactions.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredTransactions.length, currentPage * itemsPerPage)} of {filteredTransactions.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    // Simple pagination logic for 5 pages around current
+                    let pageNum = currentPage;
+                    if (currentPage <= 3) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                    else pageNum = currentPage - 2 + i;
+                    
+                    if (pageNum <= 0 || pageNum > totalPages) return null;
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-500 hover:bg-white border border-transparent hover:border-slate-200'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

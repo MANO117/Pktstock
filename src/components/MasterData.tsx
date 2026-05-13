@@ -12,14 +12,35 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [newScheme, setNewScheme] = useState({ name: '', year: new Date().getFullYear().toString() });
   
-  const filteredBeneficiaries = React.useMemo(() => {
-    if (!searchTerm) return beneficiaries.slice(0, 100); // Limit initial view
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  const panchayatMap = React.useMemo(() => {
+    return panchayats.reduce((acc, p) => {
+      acc[p.id] = p.name.toLowerCase();
+      return acc;
+    }, {} as Record<string, string>);
+  }, [panchayats]);
+
+  const allFilteredBeneficiaries = React.useMemo(() => {
+    if (!searchTerm) return beneficiaries;
     const term = searchTerm.toLowerCase();
     return beneficiaries.filter(b => 
       b.name.toLowerCase().includes(term) || 
-      panchayats.find(p => p.id === b.panchayatId)?.name.toLowerCase().includes(term)
-    ).slice(0, 200);
-  }, [beneficiaries, searchTerm, panchayats]);
+      (panchayatMap[b.panchayatId]?.includes(term))
+    );
+  }, [beneficiaries, searchTerm, panchayatMap]);
+
+  const paginatedBeneficiaries = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return allFilteredBeneficiaries.slice(start, start + itemsPerPage);
+  }, [allFilteredBeneficiaries, currentPage]);
+
+  const totalPages = Math.ceil(allFilteredBeneficiaries.length / itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
   const [newOverseer, setNewOverseer] = useState('');
   const [newPanchayat, setNewPanchayat] = useState({ name: '', overseerId: '' });
   const [newBeneficiary, setNewBeneficiary] = useState({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() });
@@ -825,7 +846,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
             </div>
           )}
           <div className="flex-1 max-h-80 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-            {filteredBeneficiaries.map(b => (
+            {paginatedBeneficiaries.map(b => (
               <div key={b.id} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl group hover:border-amber-200 transition-colors">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-700">{b.name}</span>
@@ -850,18 +871,25 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                       </button>
                       <button 
                         type="button"
+                        disabled={isProcessing}
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           if (confirmDeleteId === b.id) {
-                            await Storage.deleteBeneficiary(b.id);
-                            setConfirmDeleteId(null);
+                            setIsProcessing(true);
+                            try {
+                              await Storage.deleteBeneficiary(b.id);
+                              await refreshData();
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
                           } else {
                             setConfirmDeleteId(b.id);
                           }
                         }}
                         onMouseLeave={() => setConfirmDeleteId(null)}
-                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors ${confirmDeleteId === b.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors disabled:opacity-30 ${confirmDeleteId === b.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {confirmDeleteId === b.id ? 'Confirm?' : 'Del'}
@@ -871,7 +899,51 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                 </div>
               </div>
             ))}
+            {allFilteredBeneficiaries.length === 0 && <p className="text-center py-10 text-slate-400 text-[10px] italic">No beneficiaries found</p>}
           </div>
+
+          {/* Beneficiary Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black text-slate-400 uppercase">Page {currentPage} of {totalPages}</span>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1 px-2 border rounded text-[10px] font-bold disabled:opacity-30"
+                  >
+                    Prev
+                  </button>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1 px-2 border rounded text-[10px] font-bold disabled:opacity-30"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                 {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    let pageNum = currentPage;
+                    if (currentPage <= 3) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                    else pageNum = currentPage - 2 + i;
+                    if (pageNum <= 0 || pageNum > totalPages) return null;
+                    return (
+                      <button 
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-black rounded ${currentPage === pageNum ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                 })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
