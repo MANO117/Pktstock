@@ -68,7 +68,7 @@ function AppContent() {
     setActiveTab('entry');
   };
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -313,7 +313,7 @@ function AppContent() {
             </div>
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full ${isAdmin ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'} flex items-center justify-center text-xs font-bold`}>
-                {currentUser?.username.substring(0, 2).toUpperCase()}
+                {(currentUser?.username || '??').substring(0, 2).toUpperCase()}
               </div>
             </div>
           </div>

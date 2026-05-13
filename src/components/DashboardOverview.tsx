@@ -55,61 +55,78 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
   }, [transactions, dateRange, selectedMaterial]);
 
   // Totals
-  const receiptsCount = filteredTransactions.filter(t => t.type === 'RECEIPT').length;
-  const issuesCount = filteredTransactions.filter(t => t.type === 'ISSUE').length;
+  const quantities = useMemo(() => {
+    const now = new Date();
+    const dayStart = startOfDay(now);
+    const dayEnd = endOfDay(now);
+    const weekStart = startOfWeek(now);
+    const weekEnd = endOfWeek(now);
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const yearStart = startOfYear(now);
+    const yearEnd = endOfYear(now);
 
-  // Stock Balance Logic
-  const calculateBalances = (material: MaterialType) => {
-    const allBefore = transactions.filter(t => t.material === material && parseISO(t.date) < startOfDay(parseISO(dateRange.start)));
-    const opening = allBefore.reduce((acc, t) => acc + (t.type === 'RECEIPT' ? t.quantity : -t.quantity), 0);
-    
-    const during = transactions.filter(t => t.material === material && isWithinInterval(parseISO(t.date), {
-      start: startOfDay(parseISO(dateRange.start)),
-      end: endOfDay(parseISO(dateRange.end))
-    }));
-    
-    const receipts = during.filter(t => t.type === 'RECEIPT').reduce((acc, t) => acc + t.quantity, 0);
-    const issues = during.filter(t => t.type === 'ISSUE').reduce((acc, t) => acc + t.quantity, 0);
-    
-    return { opening, receipts, issues, closing: opening + receipts - issues };
-  };
-  
-  // Frequency Stats
-  const now = new Date();
-  const dayStart = startOfDay(now);
-  const dayEnd = endOfDay(now);
+    let d = 0, w = 0, m = 0, y = 0;
 
-  const dailyIssuesQty = transactions
-    .filter(t => t.type === 'ISSUE' && isWithinInterval(parseISO(t.date), { start: dayStart, end: dayEnd }))
-    .reduce((acc, t) => acc + t.quantity, 0);
+    for (const t of transactions) {
+      if (t.type !== 'ISSUE') continue;
+      const tDate = parseISO(t.date);
+      if (tDate >= dayStart && tDate <= dayEnd) d += t.quantity;
+      if (tDate >= weekStart && tDate <= weekEnd) w += t.quantity;
+      if (tDate >= monthStart && tDate <= monthEnd) m += t.quantity;
+      if (tDate >= yearStart && tDate <= yearEnd) y += t.quantity;
+    }
 
-  const weeklyIssuesQty = transactions
-    .filter(t => t.type === 'ISSUE' && isWithinInterval(parseISO(t.date), { start: startOfWeek(now), end: endOfWeek(now) }))
-    .reduce((acc, t) => acc + t.quantity, 0);
-
-  const monthlyIssuesQty = transactions
-    .filter(t => t.type === 'ISSUE' && isWithinInterval(parseISO(t.date), { start: startOfMonth(now), end: endOfMonth(now) }))
-    .reduce((acc, t) => acc + t.quantity, 0);
-
-  const yearlyIssuesQty = transactions
-    .filter(t => t.type === 'ISSUE' && isWithinInterval(parseISO(t.date), { start: startOfYear(now), end: endOfYear(now) }))
-    .reduce((acc, t) => acc + t.quantity, 0);
+    return { daily: d, weekly: w, monthly: m, yearly: y };
+  }, [transactions]);
 
   // Rankings
-  const overseerIssues = overseers.map(o => {
-    const pIds = panchayats.filter(p => p.overseerId === o.id).map(p => p.id);
-    const totalQty = transactions
-      .filter(t => t.type === 'ISSUE' && t.panchayatId && pIds.includes(t.panchayatId))
-      .reduce((acc, t) => acc + t.quantity, 0);
-    return { ...o, totalQty };
-  }).sort((a, b) => b.totalQty - a.totalQty);
+  const rankings = useMemo(() => {
+    const oIssues = overseers.map(o => {
+      const pIds = panchayats.filter(p => p.overseerId === o.id).map(p => p.id);
+      const totalQty = transactions
+        .filter(t => t.type === 'ISSUE' && t.panchayatId && pIds.includes(t.panchayatId))
+        .reduce((acc, t) => acc + t.quantity, 0);
+      return { ...o, totalQty };
+    }).sort((a, b) => b.totalQty - a.totalQty);
 
-  const panchayatAllocations = panchayats.map(p => {
-    const totalQty = transactions
-      .filter(t => t.type === 'ISSUE' && t.panchayatId === p.id)
-      .reduce((acc, t) => acc + t.quantity, 0);
-    return { ...p, totalQty };
-  }).sort((a, b) => b.totalQty - a.totalQty);
+    const pAllocations = panchayats.map(p => {
+      const totalQty = transactions
+        .filter(t => t.type === 'ISSUE' && t.panchayatId === p.id)
+        .reduce((acc, t) => acc + t.quantity, 0);
+      return { ...p, totalQty };
+    }).sort((a, b) => b.totalQty - a.totalQty);
+
+    return { overseerIssues: oIssues, panchayatAllocations: pAllocations };
+  }, [transactions, overseers, panchayats]);
+
+  // Table Balances calculation
+  const tableBalances = useMemo(() => {
+    const targetStart = startOfDay(parseISO(dateRange.start));
+    const targetEnd = endOfDay(parseISO(dateRange.end));
+
+    return materials.filter(m => selectedMaterial === 'All' || m === selectedMaterial).map(material => {
+      let opening = 0, receipts = 0, issues = 0;
+
+      for (const t of transactions) {
+        if (t.material !== material) continue;
+        const tDate = parseISO(t.date);
+        const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
+
+        if (tDate < targetStart) {
+          opening += amount;
+        } else if (tDate <= targetEnd) {
+          if (t.type === 'RECEIPT') receipts += t.quantity;
+          else issues += t.quantity;
+        }
+      }
+
+      return { material, opening, receipts, issues, closing: opening + receipts - issues };
+    });
+  }, [transactions, materials, dateRange, selectedMaterial]);
+
+  const receiptsCount = filteredTransactions.filter(t => t.type === 'RECEIPT').length;
+  const issuesCount = filteredTransactions.filter(t => t.type === 'ISSUE').length;
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
@@ -157,10 +174,10 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
       {/* Frequency Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Issues Today', count: dailyIssuesQty, color: 'blue' },
-          { label: 'Weekly Issues', count: weeklyIssuesQty, color: 'indigo' },
-          { label: 'Monthly Issues', count: monthlyIssuesQty, color: 'emerald' },
-          { label: 'Yearly Issues', count: yearlyIssuesQty, color: 'amber' },
+          { label: 'Issues Today', count: quantities.daily, color: 'blue' },
+          { label: 'Weekly Issues', count: quantities.weekly, color: 'indigo' },
+          { label: 'Monthly Issues', count: quantities.monthly, color: 'emerald' },
+          { label: 'Yearly Issues', count: quantities.yearly, color: 'amber' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-400 transition-colors">
             <div className={`text-3xl font-black text-slate-900 mb-1 group-hover:text-${stat.color}-600 transition-colors`}>
@@ -194,18 +211,15 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
                   </tr>
                 </thead>
                 <tbody className="text-xs divide-y divide-slate-50">
-                  {materials.filter(m => selectedMaterial === 'All' || m === selectedMaterial).map(m => {
-                    const bal = calculateBalances(m);
-                    return (
-                      <tr key={m} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-4 font-bold text-slate-800">{m}</td>
-                        <td className="px-4 py-4 text-right font-medium text-slate-500">{Math.round(bal.opening).toLocaleString()}</td>
-                        <td className="px-4 py-4 text-right font-bold text-emerald-600">+{Math.round(bal.receipts).toLocaleString()}</td>
-                        <td className="px-4 py-4 text-right font-bold text-amber-600">{Math.round(bal.issues).toLocaleString()}</td>
-                        <td className="px-8 py-4 text-right font-black bg-blue-50/20 text-blue-900">{Math.round(bal.closing).toLocaleString()}</td>
-                      </tr>
-                    );
-                  })}
+                  {tableBalances.map(bal => (
+                    <tr key={bal.material} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-8 py-4 font-bold text-slate-800">{bal.material}</td>
+                      <td className="px-4 py-4 text-right font-medium text-slate-500">{Math.round(bal.opening).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-right font-bold text-emerald-600">+{Math.round(bal.receipts).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-right font-bold text-amber-600">{Math.round(bal.issues).toLocaleString()}</td>
+                      <td className="px-8 py-4 text-right font-black bg-blue-50/20 text-blue-900">{Math.round(bal.closing).toLocaleString()}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -267,7 +281,7 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
                  Staff Efficiency <Users className="w-4 h-4 text-blue-500" />
               </h3>
               <div className="space-y-4">
-                 {overseerIssues.slice(0, 5).map((o, idx) => (
+                 {rankings.overseerIssues.slice(0, 5).map((o, idx) => (
                    <div key={o.id} className="flex items-center gap-4">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${idx === 0 ? 'bg-amber-100 text-amber-700 shadow-md shadow-amber-500/10' : 'bg-slate-100 text-slate-500'}`}>
                          {idx + 1}
@@ -280,7 +294,7 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
                          <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
                             <div 
                               className="bg-blue-600 h-full rounded-full transition-all duration-1000" 
-                              style={{ width: `${(o.totalQty / Math.max(...overseerIssues.map(oi => oi.totalQty), 1)) * 100}%` }}
+                              style={{ width: `${(o.totalQty / Math.max(...rankings.overseerIssues.map(oi => oi.totalQty), 1)) * 100}%` }}
                             ></div>
                          </div>
                       </div>
@@ -295,7 +309,7 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
                  Zone Allocation <MapPin className="w-4 h-4 text-emerald-500" />
               </h3>
               <div className="space-y-4">
-                 {panchayatAllocations.slice(0, 5).map((p, idx) => (
+                 {rankings.panchayatAllocations.slice(0, 5).map((p, idx) => (
                    <div key={p.id} className="flex items-center gap-4">
                       <div className="flex-1">
                          <div className="flex justify-between items-center mb-1">
@@ -305,7 +319,7 @@ export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOver
                          <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden border border-slate-100">
                             <div 
                               className="bg-emerald-500 h-full rounded-full transition-all duration-1000" 
-                              style={{ width: `${(p.totalQty / Math.max(...panchayatAllocations.map(pa => pa.totalQty), 1)) * 100}%` }}
+                              style={{ width: `${(p.totalQty / Math.max(...rankings.panchayatAllocations.map(pa => pa.totalQty), 1)) * 100}%` }}
                             ></div>
                          </div>
                       </div>

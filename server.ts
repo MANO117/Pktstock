@@ -13,14 +13,19 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// In-memory data store to avoid frequent disk I/O
+let cachedData: any = null;
+
 // Helper to load/save data
 async function loadData() {
+  if (cachedData) return cachedData;
   try {
     const data = await fs.readFile(DB_FILE, "utf-8");
-    return JSON.parse(data);
+    cachedData = JSON.parse(data);
+    return cachedData;
   } catch (e) {
     // Initial data structure
-    return {
+    cachedData = {
       users: [
         {
           id: "admin-001",
@@ -39,10 +44,12 @@ async function loadData() {
       beneficiaries: [],
       transactions: []
     };
+    return cachedData;
   }
 }
 
 async function saveData(data: any) {
+  cachedData = data;
   await fs.writeFile(DB_FILE, JSON.stringify(data, null, 2));
 }
 

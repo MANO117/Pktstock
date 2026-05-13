@@ -39,8 +39,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const currentUser = user;
 
   const refreshData = useCallback(async () => {
+    if (!user) return; // Don't poll if not logged in
+    
     try {
       const data = await Storage.getAllData();
+      
+      // Batch updates if possible (React 18 does this automatically, but let's be clean)
       setSchemes(data.schemes || []);
       setOverseers(data.overseers || []);
       setPanchayats(data.panchayats || []);
@@ -53,12 +57,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('cached_stock_pro_data', JSON.stringify(data));
       
       // Update local user state if changed in backend
-      if (user) {
-        const updatedUser = data.users.find((u: any) => u.id === user.id);
-        if (updatedUser) {
-          setUser(updatedUser);
-          localStorage.setItem('app_user', JSON.stringify(updatedUser));
-        }
+      const updatedUser = data.users?.find((u: any) => u.id === user.id);
+      if (updatedUser && JSON.stringify(updatedUser) !== JSON.stringify(user)) {
+        setUser(updatedUser);
+        localStorage.setItem('app_user', JSON.stringify(updatedUser));
       }
     } catch (e) {
       console.error("Failed to fetch data", e);
@@ -76,23 +78,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Try to load cached data for instant appearance
     const cachedDataString = localStorage.getItem('cached_stock_pro_data');
     if (cachedDataString) {
-      const data = JSON.parse(cachedDataString);
-      setSchemes(data.schemes || []);
-      setOverseers(data.overseers || []);
-      setPanchayats(data.panchayats || []);
-      setBeneficiaries(data.beneficiaries || []);
-      setMaterials(data.materials || []);
-      setTransactions(data.transactions || []);
-      setSystemUsers(data.users || []);
-      setDataLoading(false); // We have cached data, don't block
+      try {
+        const data = JSON.parse(cachedDataString);
+        setSchemes(data.schemes || []);
+        setOverseers(data.overseers || []);
+        setPanchayats(data.panchayats || []);
+        setBeneficiaries(data.beneficiaries || []);
+        setMaterials(data.materials || []);
+        setTransactions(data.transactions || []);
+        setSystemUsers(data.users || []);
+        setDataLoading(false);
+      } catch (e) {
+        console.error("Cache corrupted", e);
+      }
     }
 
     setLoading(false);
-    refreshData();
-    
-    const interval = setInterval(refreshData, 15000); // Relaxed poll interval to 15s instead of 5s
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    refreshData();
+    const interval = setInterval(refreshData, 20000); // 20s poll
+    return () => clearInterval(interval);
+  }, [user, refreshData]);
 
   const login = async (credentials: any) => {
     const result = await Storage.login(credentials);

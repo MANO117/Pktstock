@@ -18,7 +18,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
     overseerId: 'All',
   });
 
-  const getFilteredData = () => {
+  const filtered = React.useMemo(() => {
     let data = transactions;
     const now = new Date();
 
@@ -51,7 +51,17 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
     }
 
     return data;
-  };
+  }, [transactions, filter, panchayats]);
+
+  const summary = React.useMemo(() => {
+    let receipts = 0;
+    let issues = 0;
+    for (const t of filtered) {
+       if (t.type === 'RECEIPT') receipts += t.quantity;
+       else issues += t.quantity;
+    }
+    return { receipts, issues };
+  }, [filtered]);
 
   const safeFormat = (dateStr: string) => {
     try {
@@ -65,7 +75,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
   const exportPDF = () => {
     try {
       const doc = new jsPDF();
-      const data = getFilteredData();
+      const data = filtered;
       
       if (data.length === 0) {
         alert('No data available for the selected filters.');
@@ -100,7 +110,7 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
 
   const exportExcel = () => {
     try {
-      const filteredData = getFilteredData();
+      const filteredData = filtered;
       if (filteredData.length === 0) {
         alert('No data available for the selected filters.');
         return;
@@ -123,12 +133,6 @@ export default function Reports({ onEdit, isAdmin }: { onEdit?: (tx: StockTransa
       console.error('Excel Export failed:', error);
       alert('Failed to generate Excel file. Error: ' + (error instanceof Error ? error.message : String(error)));
     }
-  };
-
-  const filtered = getFilteredData();
-  const summary = {
-    receipts: filtered.filter(t => t.type === 'RECEIPT').reduce((acc, t) => acc + t.quantity, 0),
-    issues: filtered.filter(t => t.type === 'ISSUE').reduce((acc, t) => acc + t.quantity, 0),
   };
 
   return (

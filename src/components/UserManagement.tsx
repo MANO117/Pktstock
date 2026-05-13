@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Storage } from '../lib/storage';
 import { useData } from './DataProvider';
 import { SystemUser } from '../types';
@@ -10,6 +10,15 @@ export default function UserManagement() {
   const [isAdding, setIsAdding] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+
+  // Memoize sorted users for performance
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const dateA = a.requestedAt || '';
+      const dateB = b.requestedAt || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [users]);
   const [formData, setFormData] = useState({
     username: '',
     fullName: '',
@@ -204,7 +213,7 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 text-xs">
-              {users.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)).map(u => (
+              {sortedUsers.map(u => (
                 <tr key={u.id} className={`hover:bg-slate-50 transition-colors group ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
                   <td className="px-8 py-4">
                     <div className="flex items-center gap-3">

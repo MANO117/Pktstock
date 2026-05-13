@@ -1,5 +1,5 @@
 import { Scheme, Overseer, Panchayat, Beneficiary, StockTransaction, MaterialType, SystemUser, Material } from '../types';
-import { isSameDay, parseISO, startOfDay, subDays } from 'date-fns';
+import { isSameDay, parseISO, startOfDay, subDays, endOfDay } from 'date-fns';
 
 const API_BASE = '/api';
 
@@ -149,26 +149,34 @@ export const Storage = {
   deleteTransaction: (id: string) => Engine.request(`/transactions/${id}`, { method: 'DELETE' }),
 
   calculateDailyBalance: (material: MaterialType, targetDate: string, transactions: StockTransaction[]) => {
-    const matTransactions = transactions.filter(t => t.material === material);
+    const targetDateObj = parseISO(targetDate);
+    const targetStart = startOfDay(targetDateObj);
+    const targetEnd = endOfDay(targetDateObj);
     
-    const getBalanceAtEndOf = (dateIso: string) => {
-      const dayEnd = parseISO(dateIso);
-      return matTransactions
-        .filter(t => parseISO(t.date) <= dayEnd)
-        .reduce((acc, t) => acc + (t.type === 'RECEIPT' ? t.quantity : -t.quantity), 0);
+    let openingBalance = 0;
+    let receipts = 0;
+    let issues = 0;
+
+    for (const t of transactions) {
+      if (t.material !== material) continue;
+      
+      const tDate = parseISO(t.date);
+      const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
+
+      if (tDate < targetStart) {
+        openingBalance += amount;
+      } else if (tDate <= targetEnd) {
+        if (t.type === 'RECEIPT') receipts += t.quantity;
+        else issues += t.quantity;
+      }
+    }
+    
+    return {
+      openingBalance,
+      receipts,
+      issues,
+      closingBalance: openingBalance + receipts - issues
     };
-
-    const targetStart = startOfDay(parseISO(targetDate));
-    const yesterday = subDays(targetStart, 1);
-    
-    const openingBalance = getBalanceAtEndOf(yesterday.toISOString());
-    const dayTransactions = matTransactions.filter(t => isSameDay(parseISO(t.date), targetStart));
-    
-    const receipts = dayTransactions.filter(t => t.type === 'RECEIPT').reduce((acc, t) => acc + t.quantity, 0);
-    const issues = dayTransactions.filter(t => t.type === 'ISSUE').reduce((acc, t) => acc + t.quantity, 0);
-    const closingBalance = openingBalance + receipts - issues;
-
-    return { openingBalance, receipts, issues, closingBalance };
   },
 
   getStockBalance: (material: MaterialType, transactions: StockTransaction[]): number => {

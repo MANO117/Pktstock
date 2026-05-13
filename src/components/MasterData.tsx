@@ -8,8 +8,16 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
   const { schemes, overseers, panchayats, beneficiaries, materials } = useData();
+  const [searchTerm, setSearchTerm] = useState('');
   
-  const [newScheme, setNewScheme] = useState({ name: '', year: new Date().getFullYear().toString() });
+  const filteredBeneficiaries = React.useMemo(() => {
+    if (!searchTerm) return beneficiaries.slice(0, 100); // Limit initial view
+    const term = searchTerm.toLowerCase();
+    return beneficiaries.filter(b => 
+      b.name.toLowerCase().includes(term) || 
+      panchayats.find(p => p.id === b.panchayatId)?.name.toLowerCase().includes(term)
+    ).slice(0, 200);
+  }, [beneficiaries, searchTerm, panchayats]);
   const [newOverseer, setNewOverseer] = useState('');
   const [newPanchayat, setNewPanchayat] = useState({ name: '', overseerId: '' });
   const [newBeneficiary, setNewBeneficiary] = useState({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() });
@@ -679,9 +687,21 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
 
         {/* Beneficiaries */}
         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center justify-between">
-            Beneficiaries <Users className="w-4 h-4 text-amber-500" />
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
+              Beneficiaries <Users className="w-4 h-4 text-amber-500 inline ml-2" />
+            </h3>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search name/locality..."
+                className="pl-9 pr-4 py-1.5 border border-slate-200 rounded-full text-[10px] font-bold outline-none focus:ring-2 focus:ring-amber-100 w-40"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
           {isAdmin && (
             <div className="space-y-2 mb-4 bg-slate-50 p-4 rounded-xl">
               <input 
@@ -730,7 +750,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
             </div>
           )}
           <div className="flex-1 max-h-80 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-            {beneficiaries.map(b => (
+            {filteredBeneficiaries.map(b => (
               <div key={b.id} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl group hover:border-amber-200 transition-colors">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-700">{b.name}</span>
