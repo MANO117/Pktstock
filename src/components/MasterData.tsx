@@ -7,8 +7,9 @@ import { Upload, Plus, Trash2, Edit2, FileSpreadsheet, User, ClipboardList, X, S
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
-  const { schemes, overseers, panchayats, beneficiaries, materials } = useData();
+  const { schemes, overseers, panchayats, beneficiaries, materials, refreshData } = useData();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [newScheme, setNewScheme] = useState({ name: '', year: new Date().getFullYear().toString() });
   
   const filteredBeneficiaries = React.useMemo(() => {
@@ -52,13 +53,19 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
 
   const handleAddScheme = async () => {
     if (!newScheme.name) return;
-    if (editingScheme) {
-      await Storage.setScheme({ ...editingScheme, ...newScheme });
-      setEditingScheme(null);
-    } else {
-      await Storage.setScheme({ ...newScheme, id: Storage.generateId() });
+    setIsProcessing(true);
+    try {
+      if (editingScheme) {
+        await Storage.setScheme({ ...editingScheme, ...newScheme });
+        setEditingScheme(null);
+      } else {
+        await Storage.setScheme({ ...newScheme, id: Storage.generateId() });
+      }
+      await refreshData();
+      setNewScheme({ name: '', year: new Date().getFullYear().toString() });
+    } finally {
+      setIsProcessing(false);
     }
-    setNewScheme({ name: '', year: new Date().getFullYear().toString() });
   };
 
   const handleSaveStages = async () => {
@@ -66,102 +73,134 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
     const scheme = schemes.find(s => s.id === showStageEditor);
     if (!scheme) return;
 
-    await Storage.setScheme({
-      ...scheme,
-      materialStages: {
-        ...(scheme.materialStages || {}),
-        [stageInput.material]: stageInput.stages
-      }
-    });
-    setShowStageEditor(null);
+    setIsProcessing(true);
+    try {
+      await Storage.setScheme({
+        ...scheme,
+        materialStages: {
+          ...(scheme.materialStages || {}),
+          [stageInput.material]: stageInput.stages
+        }
+      });
+      await refreshData();
+    } finally {
+      setIsProcessing(false);
+      setShowStageEditor(null);
+    }
   };
 
   const handleAddOverseer = async () => {
     if (!newOverseer) return;
-    if (editingOverseer) {
-      await Storage.setOverseer({ ...editingOverseer, name: newOverseer });
-      setEditingOverseer(null);
-    } else {
-      await Storage.setOverseer({ id: Storage.generateId(), name: newOverseer });
+    setIsProcessing(true);
+    try {
+      if (editingOverseer) {
+        await Storage.setOverseer({ ...editingOverseer, name: newOverseer });
+        setEditingOverseer(null);
+      } else {
+        await Storage.setOverseer({ id: Storage.generateId(), name: newOverseer });
+      }
+      await refreshData();
+      setNewOverseer('');
+    } finally {
+      setIsProcessing(false);
     }
-    setNewOverseer('');
   };
 
   const handleAddPanchayat = async () => {
     if (!newPanchayat.name || !newPanchayat.overseerId) return;
-    if (editingPanchayat) {
-      await Storage.setPanchayat({ ...editingPanchayat, ...newPanchayat });
-      setEditingPanchayat(null);
-    } else {
-      await Storage.setPanchayat({ id: Storage.generateId(), ...newPanchayat });
+    setIsProcessing(true);
+    try {
+      if (editingPanchayat) {
+        await Storage.setPanchayat({ ...editingPanchayat, ...newPanchayat });
+        setEditingPanchayat(null);
+      } else {
+        await Storage.setPanchayat({ id: Storage.generateId(), ...newPanchayat });
+      }
+      await refreshData();
+      setNewPanchayat({ name: '', overseerId: '' });
+    } finally {
+      setIsProcessing(false);
     }
-    setNewPanchayat({ name: '', overseerId: '' });
   };
 
   const handleAddMaterial = async () => {
     if (!newMaterial.name) return;
-    if (editingMaterial) {
-      await Storage.setMaterial({ ...editingMaterial, ...newMaterial });
-      setEditingMaterial(null);
-    } else {
-      await Storage.setMaterial({ id: Storage.generateId(), ...newMaterial });
+    setIsProcessing(true);
+    try {
+      if (editingMaterial) {
+        await Storage.setMaterial({ ...editingMaterial, ...newMaterial });
+        setEditingMaterial(null);
+      } else {
+        await Storage.setMaterial({ id: Storage.generateId(), ...newMaterial });
+      }
+      await refreshData();
+      setNewMaterial({ name: '', unit: 'Bags' });
+    } finally {
+      setIsProcessing(false);
     }
-    setNewMaterial({ name: '', unit: 'Bags' });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'OVERSEER_PANCHAYAT' | 'BENEFICIARY') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsProcessing(true);
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
 
-      if (type === 'OVERSEER_PANCHAYAT') {
-        const newOverseersMap: Record<string, string> = {};
-        
-        for (const row of data as any[]) {
-          const oName = row['Overseer'] || row['overseer'];
-          const pName = row['Panchayat'] || row['panchayat'];
+        if (type === 'OVERSEER_PANCHAYAT') {
+          const newOverseersMap: Record<string, string> = {};
           
-          if (oName && !newOverseersMap[oName]) {
-            const oId = Storage.generateId();
-            newOverseersMap[oName] = oId;
-            await Storage.setOverseer({ id: oId, name: oName });
+          for (const row of data as any[]) {
+            const oName = row['Overseer'] || row['overseer'];
+            const pName = row['Panchayat'] || row['panchayat'];
+            
+            if (oName && !newOverseersMap[oName]) {
+              const oId = Storage.generateId();
+              newOverseersMap[oName] = oId;
+              await Storage.setOverseer({ id: oId, name: oName });
+            }
+            if (pName && oName) {
+              await Storage.setPanchayat({
+                id: Storage.generateId(),
+                name: pName,
+                overseerId: newOverseersMap[oName]
+              });
+            }
           }
-          if (pName && oName) {
-            await Storage.setPanchayat({
-              id: Storage.generateId(),
-              name: pName,
-              overseerId: newOverseersMap[oName]
-            });
+        } else {
+          if (!targetSchemeId) {
+            alert('Please select a target scheme before uploading beneficiaries.');
+            return;
+          }
+          for (const row of data as any[]) {
+            const pName = row['Panchayat'] || row['panchayat'];
+            const bName = row['Beneficiary'] || row['beneficiary'];
+            const year = row['Year'] || row['year'] || new Date().getFullYear().toString();
+            
+            const panchayat = panchayats.find(p => p.name.toLowerCase() === pName?.toString().toLowerCase());
+            if (bName && panchayat) {
+              await Storage.setBeneficiary({
+                id: Storage.generateId(),
+                name: bName,
+                panchayatId: panchayat.id,
+                schemeId: targetSchemeId,
+                year: year.toString()
+              });
+            }
           }
         }
-      } else {
-        if (!targetSchemeId) {
-          alert('Please select a target scheme before uploading beneficiaries.');
-          return;
-        }
-        for (const row of data as any[]) {
-          const pName = row['Panchayat'] || row['panchayat'];
-          const bName = row['Beneficiary'] || row['beneficiary'];
-          const year = row['Year'] || row['year'] || new Date().getFullYear().toString();
-          
-          const panchayat = panchayats.find(p => p.name.toLowerCase() === pName?.toString().toLowerCase());
-          if (bName && panchayat) {
-            await Storage.setBeneficiary({
-              id: Storage.generateId(),
-              name: bName,
-              panchayatId: panchayat.id,
-              schemeId: targetSchemeId,
-              year: year.toString()
-            });
-          }
-        }
+        await refreshData();
+      } catch (err) {
+        console.error("Upload failed", err);
+      } finally {
+        setIsProcessing(false);
       }
     };
     reader.readAsBinaryString(file);
@@ -257,18 +296,25 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                       </button>
                       <button 
                         type="button"
+                        disabled={isProcessing}
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           if (confirmDeleteId === s.id) {
-                            await Storage.deleteScheme(s.id);
-                            setConfirmDeleteId(null);
+                            setIsProcessing(true);
+                            try {
+                              await Storage.deleteScheme(s.id);
+                              await refreshData();
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
                           } else {
                             setConfirmDeleteId(s.id);
                           }
                         }}
                         onMouseLeave={() => setConfirmDeleteId(null)}
-                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-all ${confirmDeleteId === s.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                        className={`flex-1 flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-all disabled:opacity-30 ${confirmDeleteId === s.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {confirmDeleteId === s.id ? 'Confirm?' : 'Del'}
@@ -516,18 +562,25 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                       </button>
                       <button 
                         type="button"
+                        disabled={isProcessing}
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           if (confirmDeleteId === m.id) {
-                            await Storage.deleteMaterial(m.id);
-                            setConfirmDeleteId(null);
+                            setIsProcessing(true);
+                            try {
+                              await Storage.deleteMaterial(m.id);
+                              await refreshData();
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
                           } else {
                             setConfirmDeleteId(m.id);
                           }
                         }}
                         onMouseLeave={() => setConfirmDeleteId(null)}
-                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors ${confirmDeleteId === m.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors disabled:opacity-30 ${confirmDeleteId === m.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {confirmDeleteId === m.id ? 'Confirm?' : 'Del'}
@@ -580,24 +633,31 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                     <Edit2 className="w-3.5 h-3.5" />
                     Edit
                   </button>
-                  <button 
-                    type="button"
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (confirmDeleteId === o.id) {
-                        await Storage.deleteOverseer(o.id);
-                        setConfirmDeleteId(null);
-                      } else {
-                        setConfirmDeleteId(o.id);
-                      }
-                    }}
-                    onMouseLeave={() => setConfirmDeleteId(null)}
-                    className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors ${confirmDeleteId === o.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    {confirmDeleteId === o.id ? 'Confirm?' : 'Del'}
-                  </button>
+                      <button 
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (confirmDeleteId === o.id) {
+                            setIsProcessing(true);
+                            try {
+                              await Storage.deleteOverseer(o.id);
+                              await refreshData();
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
+                          } else {
+                            setConfirmDeleteId(o.id);
+                          }
+                        }}
+                        onMouseLeave={() => setConfirmDeleteId(null)}
+                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors disabled:opacity-30 ${confirmDeleteId === o.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {confirmDeleteId === o.id ? 'Confirm?' : 'Del'}
+                      </button>
                 </div>
               </div>
             ))}
@@ -662,18 +722,25 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                       </button>
                       <button 
                         type="button"
+                        disabled={isProcessing}
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           if (confirmDeleteId === p.id) {
-                            await Storage.deletePanchayat(p.id);
-                            setConfirmDeleteId(null);
+                            setIsProcessing(true);
+                            try {
+                              await Storage.deletePanchayat(p.id);
+                              await refreshData();
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
                           } else {
                             setConfirmDeleteId(p.id);
                           }
                         }}
                         onMouseLeave={() => setConfirmDeleteId(null)}
-                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors ${confirmDeleteId === p.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                        className={`flex items-center gap-1 text-[10px] font-black uppercase p-2 rounded-lg transition-colors disabled:opacity-30 ${confirmDeleteId === p.id ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {confirmDeleteId === p.id ? 'Confirm?' : 'Del'}
@@ -734,17 +801,24 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                 <button 
                   onClick={async () => {
                     if (!newBeneficiary.name || !newBeneficiary.panchayatId || !newBeneficiary.schemeId) return;
-                    if (editingBeneficiary) {
-                      await Storage.setBeneficiary({ ...editingBeneficiary, ...newBeneficiary });
-                      setEditingBeneficiary(null);
-                    } else {
-                      await Storage.setBeneficiary({ id: Storage.generateId(), ...newBeneficiary });
+                    setIsProcessing(true);
+                    try {
+                      if (editingBeneficiary) {
+                        await Storage.setBeneficiary({ ...editingBeneficiary, ...newBeneficiary });
+                        setEditingBeneficiary(null);
+                      } else {
+                        await Storage.setBeneficiary({ id: Storage.generateId(), ...newBeneficiary });
+                      }
+                      await refreshData();
+                      setNewBeneficiary({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() });
+                    } finally {
+                      setIsProcessing(false);
                     }
-                    setNewBeneficiary({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() });
                   }} 
-                  className={`flex-1 p-2 ${editingBeneficiary ? 'bg-amber-600' : 'bg-amber-600'} text-white rounded-lg hover:opacity-90 transition font-bold text-xs uppercase tracking-widest shadow-lg`}
+                  disabled={isProcessing}
+                  className={`flex-1 p-2 ${editingBeneficiary ? 'bg-amber-600' : 'bg-amber-600'} text-white rounded-lg hover:opacity-90 transition font-bold text-xs uppercase tracking-widest shadow-lg disabled:opacity-50`}
                 >
-                  {editingBeneficiary ? 'Update Beneficiary' : 'Register Beneficiary'}
+                  {isProcessing ? 'Processing...' : (editingBeneficiary ? 'Update Beneficiary' : 'Register Beneficiary')}
                 </button>
                 {editingBeneficiary && <button onClick={() => { setEditingBeneficiary(null); setNewBeneficiary({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() }); }} className="p-2 text-slate-400 border rounded-lg"><X className="w-4 h-4"/></button>}
               </div>

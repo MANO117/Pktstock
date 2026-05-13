@@ -12,9 +12,10 @@ interface StockEntryProps {
 }
 
 export default function StockEntry({ editData, onComplete, isAdmin }: StockEntryProps) {
-  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials } = useData();
+  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials, refreshData } = useData();
   const [type, setType] = useState<'RECEIPT' | 'ISSUE'>('RECEIPT');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [formData, setFormData] = useState<Partial<StockTransaction>>({
     date: format(new Date(), 'yyyy-MM-dd'),
@@ -85,9 +86,15 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
       timestamp: editData?.timestamp || new Date().toISOString()
     };
 
-    await Storage.setTransaction(newTx);
-    setFormData({ ...formData, quantity: 0, beneficiaryId: '', invoiceNo: '' });
-    if (onComplete) onComplete();
+    setIsProcessing(true);
+    try {
+      await Storage.setTransaction(newTx);
+      await refreshData();
+      setFormData({ ...formData, quantity: 0, beneficiaryId: '', invoiceNo: '' });
+      if (onComplete) onComplete();
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
 
@@ -311,9 +318,10 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
             <button 
               type="submit"
-              className={`w-full py-4 rounded-xl font-black text-xs tracking-[0.2em] uppercase text-white transition-all shadow-lg ${type === 'RECEIPT' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-900/20' : 'bg-slate-900 hover:bg-black shadow-slate-900/20'}`}
+              disabled={isProcessing}
+              className={`w-full py-4 rounded-xl font-black text-xs tracking-[0.2em] uppercase text-white transition-all shadow-lg disabled:opacity-50 ${type === 'RECEIPT' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-900/20' : 'bg-slate-900 hover:bg-black shadow-slate-900/20'}`}
             >
-              Commit Transaction
+              {isProcessing ? 'Saving...' : 'Commit Transaction'}
             </button>
           </form>
         </div>
@@ -396,18 +404,25 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                         </button>
                         <button 
                           type="button"
+                          disabled={isProcessing}
                           onClick={async (e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             if (confirmDeleteId === tx.id) {
-                              await Storage.deleteTransaction(tx.id);
-                              setConfirmDeleteId(null);
+                              setIsProcessing(true);
+                              try {
+                                await Storage.deleteTransaction(tx.id);
+                                await refreshData();
+                              } finally {
+                                setIsProcessing(false);
+                                setConfirmDeleteId(null);
+                              }
                             } else {
                               setConfirmDeleteId(tx.id);
                             }
                           }}
                           onMouseLeave={() => setConfirmDeleteId(null)}
-                          className={`transition-colors p-1 rounded ${confirmDeleteId === tx.id ? 'bg-red-600 text-white' : 'text-slate-300 hover:text-red-500'}`}
+                          className={`transition-colors p-1 rounded disabled:opacity-30 ${confirmDeleteId === tx.id ? 'bg-red-600 text-white' : 'text-slate-300 hover:text-red-500'}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
