@@ -249,98 +249,164 @@ function AppContent() {
     <div className="min-h-screen bg-slate-50 flex text-slate-800 font-sans overflow-hidden">
       {/* Sidebar Navigation */}
       <aside 
-        className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 text-white transition-all duration-300 flex flex-col shadow-xl z-20`}
+        className={`${isSidebarOpen ? 'w-72' : 'w-24'} bg-eng-blue text-white transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] flex flex-col shadow-2xl z-50`}
       >
-        <div className="p-6 border-b border-slate-700">
-          <h1 className="text-xl font-bold tracking-tight text-blue-400">STOCK REGISTRY</h1>
-          {isSidebarOpen && <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold">Infrastructure Management</p>}
+        <div className="p-8 pb-12 flex items-center justify-between overflow-hidden">
+          <AnimatePresence mode="wait">
+            {isSidebarOpen ? (
+              <motion.div 
+                key="logo-full"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="flex items-center gap-3"
+              >
+                <div className="w-10 h-10 bg-safety-yellow rounded-xl flex items-center justify-center shadow-lg shadow-safety-yellow/20">
+                  <Package className="w-6 h-6 text-eng-blue" />
+                </div>
+                <div className="flex flex-col">
+                  <h1 className="text-xl font-black tracking-tighter leading-none">CIVIL<span className="text-safety-yellow">PRO</span></h1>
+                  <span className="text-[8px] font-black uppercase tracking-[0.4em] opacity-40 mt-1">Registry v3.0</span>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="logo-collapsed"
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-10 h-10 bg-safety-yellow rounded-xl flex items-center justify-center mx-auto shadow-lg shadow-safety-yellow/20"
+              >
+                <Package className="w-6 h-6 text-eng-blue" />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 mt-4 overflow-y-auto">
-          {isSidebarOpen && <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-3">Main Menu</div>}
+        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as Tab)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+              className={`w-full relative flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-300 group overflow-hidden ${activeTab === item.id ? 'bg-white/10 text-white shadow-xl inset-shadow-xs' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
             >
-              <item.icon className={`w-5 h-5 flex-shrink-0 ${activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />
-              {isSidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
+              {activeTab === item.id && (
+                <motion.div 
+                  layoutId="active-tab-indicator"
+                  className="absolute left-0 w-1 h-6 bg-safety-yellow rounded-r-full"
+                />
+              )}
+              <item.icon className={`w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110 ${activeTab === item.id ? 'text-safety-yellow' : 'text-slate-500 group-hover:text-slate-300'}`} />
+              {isSidebarOpen && <span className="text-sm font-bold tracking-tight">{item.label}</span>}
             </button>
           ))}
           
-          <div className="pt-4 mt-4 border-t border-slate-800">
+          <div className="pt-8 mt-8 border-t border-white/5 px-4">
             <button
               onClick={handleLogout}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group text-red-400 hover:bg-red-500/10 hover:text-red-300`}
+              className={`w-full flex items-center gap-4 py-3 rounded-2xl transition-all duration-300 group text-slate-400 hover:text-red-400`}
             >
-              <LogOut className="w-5 h-5 flex-shrink-0 text-red-500 opacity-50 group-hover:opacity-100" />
-              {isSidebarOpen && <span className="text-sm font-black uppercase tracking-widest">Exit Portal</span>}
+              <LogOut className="w-5 h-5 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
+              {isSidebarOpen && <span className="text-xs font-black uppercase tracking-widest text-left">Disconnect</span>}
             </button>
           </div>
         </nav>
 
-        <div className="p-4 bg-slate-800/50 border-t border-slate-700">
-          <div className="flex items-center justify-between">
-            {isSidebarOpen && (
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Fiscal Year</div>
-                <div className="text-xs font-bold text-slate-200">{new Date().getFullYear()} - {new Date().getFullYear() + 1}</div>
-              </div>
-            )}
-            <button 
-              onClick={() => setSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-lg hover:bg-slate-700 transition"
-            >
-              {isSidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            </button>
+        <div className="p-6">
+          <div 
+            onClick={() => setSidebarOpen(!isSidebarOpen)}
+            className="w-full h-12 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center cursor-pointer transition-all active:scale-95 group"
+          >
+            <AnimatePresence mode="wait">
+              {isSidebarOpen ? (
+                <motion.div key="chevron-left" initial={{ rotate: 180 }} animate={{ rotate: 0 }}>
+                  <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-white rotate-180" />
+                </motion.div>
+              ) : (
+                <motion.div key="chevron-right" initial={{ rotate: 0 }} animate={{ rotate: 0 }}>
+                   <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-white" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm shrink-0 z-10">
-          <div className="flex items-center gap-4">
-             <h1 className="text-sm font-black text-slate-700 uppercase tracking-[0.2em]">
-              {menuItems.find(m => m.id === activeTab)?.label}
-            </h1>
-          </div>
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
+        <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-10 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] shrink-0 z-40">
           <div className="flex items-center gap-6">
-            <div className="hidden md:block text-right border-r pr-6 border-slate-100">
-               <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">Live Session</p>
-               <p className={`text-xs font-bold ${isAdmin ? 'text-blue-600' : 'text-slate-500'}`}>{isAdmin ? 'Administrator Access' : 'Viewer Access'}</p>
+             <div className="px-4 py-2 bg-slate-100 rounded-xl border border-slate-200">
+                <h1 className="text-[10px] font-black text-eng-blue uppercase tracking-[0.2em]">
+                  {menuItems.find(m => m.id === activeTab)?.label}
+                </h1>
+             </div>
+             <div className="h-4 w-px bg-slate-200 hidden md:block"></div>
+             <div className="hidden md:flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Sync Active</span>
+             </div>
+          </div>
+          <div className="flex items-center gap-8">
+            <div className="hidden lg:flex flex-col items-end">
+               <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">System Authority</p>
+               <div className="flex items-center gap-2">
+                 <Shield className={`w-3.5 h-3.5 ${isAdmin ? 'text-amber-500' : 'text-slate-400'}`} />
+                 <p className={`text-xs font-bold leading-none ${isAdmin ? 'text-slate-900' : 'text-slate-500'}`}>
+                   {isAdmin ? 'Administrator Level' : 'Standard Access'}
+                 </p>
+               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full ${isAdmin ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'} flex items-center justify-center text-xs font-bold`}>
-                {(currentUser?.username || '??').substring(0, 2).toUpperCase()}
+            
+            <div className="h-10 w-px bg-slate-100 hidden lg:block"></div>
+
+            <div className="flex items-center gap-4 group cursor-pointer p-1 pr-4 hover:bg-slate-50 rounded-2xl transition-colors">
+              <div className="relative">
+                <div className={`w-10 h-10 rounded-2xl overflow-hidden shadow-lg transform group-hover:rotate-3 transition-transform ${isAdmin ? 'bg-eng-blue' : 'bg-slate-700'} flex items-center justify-center`}>
+                  <span className="text-white text-xs font-black">
+                    {(currentUser?.username || '??').substring(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+              </div>
+              <div className="hidden sm:flex flex-col">
+                <span className="text-xs font-black text-slate-900 leading-tight uppercase tracking-tight">{currentUser?.username}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{currentUser?.role || 'Guest'}</span>
               </div>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-slate-50/50">
-          <div className="max-w-7xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto px-4 py-8 md:px-8">
+          <div className="max-w-7xl mx-auto w-full pb-20">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 1.02 }}
+                transition={{ duration: 0.35, ease: [0.32, 1, 0.67, 1] }}
               >
                 {activeTab === 'dashboard' && <DashboardOverview onNavigate={setActiveTab} isAdmin={isAdmin} />}
                 {activeTab === 'master' && <MasterData isAdmin={isAdmin} />}
                 {activeTab === 'entry' && isAdmin && (
                   <div className="relative">
                     {editingTransaction && (
-                      <div className="bg-blue-600 text-white px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center z-20 shadow-xl rounded-b-xl animate-in slide-in-from-top duration-300">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
-                          Editing Record ID: {editingTransaction.id.slice(0, 8)}...
+                      <motion.div 
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-eng-blue-light text-white px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center z-20 shadow-2xl rounded-2xl mb-8"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-safety-yellow rounded-full animate-ping"></div>
+                          In-Place Revision: {editingTransaction.id.slice(0, 8)}
                         </div>
-                        <button onClick={() => setEditingTransaction(null)} className="bg-white/20 px-3 py-1 rounded hover:bg-white/30 transition">Discard Changes</button>
-                      </div>
+                        <button 
+                          onClick={() => setEditingTransaction(null)} 
+                          className="bg-white/10 px-4 py-2 rounded-xl hover:bg-white/20 transition-all font-black text-[9px]"
+                        >
+                          Cancel Override
+                        </button>
+                      </motion.div>
                     )}
                     <StockEntry 
                       key={editingTransaction ? `edit-${editingTransaction.id}` : 'new-entry'}

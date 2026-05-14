@@ -46,14 +46,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await Storage.getAllData();
       
-      // Batch updates
-      setSchemes(data.schemes || []);
-      setOverseers(data.overseers || []);
-      setPanchayats(data.panchayats || []);
-      setBeneficiaries(data.beneficiaries || []);
-      setMaterials(data.materials || []);
-      setTransactions(data.transactions || []);
-      setSystemUsers(data.users || []);
+      // Stabilize nested arrays to prevent unnecessary re-renders
+      const stableUpdate = (prev: any[], next: any[]) => {
+        if (!next) return prev;
+        
+        // Remove duplicates by ID if it's a list of objects with IDs
+        const uniqueNext = next.every(item => item && typeof item === 'object' && 'id' in item)
+          ? Array.from(new Map(next.map(item => [item.id, item])).values())
+          : next;
+
+        if (JSON.stringify(prev) === JSON.stringify(uniqueNext)) return prev;
+        return uniqueNext;
+      };
+
+      setSchemes(prev => stableUpdate(prev, data.schemes));
+      setOverseers(prev => stableUpdate(prev, data.overseers));
+      setPanchayats(prev => stableUpdate(prev, data.panchayats));
+      setBeneficiaries(prev => stableUpdate(prev, data.beneficiaries));
+      setMaterials(prev => stableUpdate(prev, data.materials));
+      setTransactions(prev => stableUpdate(prev, data.transactions));
+      setSystemUsers(prev => stableUpdate(prev, data.users));
       
       // Cache data
       localStorage.setItem('cached_stock_pro_data', JSON.stringify(data));
@@ -71,8 +83,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const addTransaction = useCallback(async (newTx: StockTransaction) => {
-    // Optimistic Update
-    setTransactions(prev => [newTx, ...prev]);
+    // Optimistic Update with uniqueness check
+    setTransactions(prev => {
+      if (prev.some(t => t.id === newTx.id)) return prev;
+      return [newTx, ...prev];
+    });
     
     try {
       await Storage.setTransaction(newTx);
