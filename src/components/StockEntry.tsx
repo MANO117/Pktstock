@@ -12,10 +12,11 @@ interface StockEntryProps {
 }
 
 export default function StockEntry({ editData, onComplete, isAdmin }: StockEntryProps) {
-  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials, refreshData } = useData();
+  const { schemes, panchayats, beneficiaries, transactions, materials: allMaterials, refreshData, addTransaction, removeTransaction } = useData();
   const [type, setType] = useState<'RECEIPT' | 'ISSUE'>('RECEIPT');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const initialized = React.useRef(false);
   
   const [formData, setFormData] = useState<Partial<StockTransaction>>({
     date: format(new Date(), 'yyyy-MM-dd'),
@@ -38,7 +39,7 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
         ...editData,
         date: editData.date
       });
-    } else {
+    } else if (!initialized.current && materials.length > 0) {
       setFormData({
         date: format(new Date(), 'yyyy-MM-dd'),
         material: materials[0] || '',
@@ -46,7 +47,11 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
         schemeId: '',
         panchayatId: '',
         beneficiaryId: '',
+        invoiceNo: '',
+        permitNumber: '',
+        isOpeningBalance: false,
       });
+      initialized.current = true;
     }
   }, [editData, materials]);
 
@@ -56,13 +61,24 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
   const filteredTransactions = useMemo(() => {
     const term = search.toLowerCase();
-    return transactions.filter(t => 
+    // Sort descending for Activity Log (Latest First)
+    const sorted = [...transactions].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+
+    if (!term) return sorted;
+
+    return sorted.filter(t => 
       t.material.toLowerCase().includes(term) || 
       (t.type === 'RECEIPT' ? 'receipt' : 'issue').includes(term) ||
       t.invoiceNo?.toLowerCase().includes(term) ||
-      t.permitNumber?.toLowerCase().includes(term)
+      t.permitNumber?.toLowerCase().includes(term) ||
+      (t.type === 'ISSUE' && beneficiaries.find(b => b.id === t.beneficiaryId)?.name.toLowerCase().includes(term))
     );
-  }, [transactions, search]);
+  }, [transactions, search, beneficiaries]);
 
   const paginatedTransactions = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -71,15 +87,208 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
 
+  const [benSearch, setBenSearch] = useState('');
+
   const filteredBeneficiaries = useMemo(() => {
     if (!formData.panchayatId || !formData.schemeId) return [];
-    return beneficiaries.filter(b => b.panchayatId === formData.panchayatId && b.schemeId === formData.schemeId);
-  }, [beneficiaries, formData.panchayatId, formData.schemeId]);
+    let bens = beneficiaries.filter(b => b.panchayatId === formData.panchayatId && b.schemeId === formData.schemeId);
+    if (benSearch) {
+      const term = benSearch.toLowerCase();
+      bens = bens.filter(b => b.name.toLowerCase().includes(term) || b.id.toLowerCase().includes(term));
+    }
+    return bens;
+  }, [beneficiaries, formData.panchayatId, formData.schemeId, benSearch]);
+
+  const TransactionHistory = useMemo(() => {
+    return (
+      <div className="lg:col-span-2 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-8 py-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-black text-slate-900 text-lg flex items-center gap-2 tracking-tight">
+              <History className="w-5 h-5 text-blue-600" /> Activity Log
+            </h3>
+            <p className="text-xs text-slate-500 font-medium tracking-tight">Review latest material movements</p>
+          </div>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Find record..." 
+              className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 outline-none focus:ring-2 focus:ring-blue-100 w-full md:w-64 transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[800px] custom-scrollbar">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-black border-b border-slate-100 sticky top-0 bg-white z-10">
+                <th className="px-8 py-4">Timestamp</th>
+                <th className="px-6 py-4">Action</th>
+                <th className="px-6 py-4">Asset</th>
+                <th className="px-6 py-4 text-right">Units</th>
+                <th className="px-6 py-4">Reference / Entity</th>
+                <th className="px-8 py-4 text-center">Admin</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 text-xs">
+              {paginatedTransactions.map(tx => (
+                <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="px-8 py-4 text-slate-400 font-medium">{format(parseISO(tx.date), 'MMM d, yyyy')}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${tx.type === 'RECEIPT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                      {tx.type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-bold text-slate-800">
+                    {tx.material} 
+                    {tx.stage && <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-black uppercase rounded">Stage {tx.stage}</span>}
+                  </td>
+                  <td className={`px-6 py-4 text-right font-black text-sm ${tx.type === 'RECEIPT' ? 'text-emerald-700' : 'text-slate-900'}`}>
+                    <div className="flex flex-col items-end">
+                      <span>{tx.type === 'RECEIPT' ? '+' : ''}{Math.round(tx.quantity).toLocaleString()}</span>
+                      <span className="text-[8px] font-black uppercase text-slate-400 tracking-tighter">
+                        {allMaterials.find(m => m.name === tx.material)?.unit || 'units'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    {tx.type === 'RECEIPT' ? (
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-700">Invoice: {tx.invoiceNo || 'N/A'}</span>
+                        {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
+                        {tx.vehicleNo && <span className="text-[10px] text-slate-500 font-bold uppercase">Vehicle: {tx.vehicleNo}</span>}
+                        <span className="text-[10px] text-slate-400">Scheme entry point</span>
+                        {tx.isOpeningBalance && <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 font-black rounded w-fit mt-1">Opening Balance</span>}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span className="font-bold text-blue-700">{beneficiaries.find(b => b.id === tx.beneficiaryId)?.name}</span>
+                        {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
+                        {tx.vehicleNo && <span className="text-[10px] text-slate-500 font-bold uppercase">Vehicle: {tx.vehicleNo}</span>}
+                        <span className="text-[10px] text-slate-400">{panchayats.find(p => p.id === tx.panchayatId)?.name}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-8 py-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button 
+                        onClick={() => {
+                          const win = window as any;
+                          if (win.ais_edit_tx) win.ais_edit_tx(tx);
+                        }}
+                        className="text-slate-300 hover:text-blue-500 transition-colors p-1"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (confirmDeleteId === tx.id) {
+                            setIsProcessing(true);
+                            try {
+                              await removeTransaction(tx.id);
+                            } catch (e) {
+                              alert('Failed to delete transaction');
+                            } finally {
+                              setIsProcessing(false);
+                              setConfirmDeleteId(null);
+                            }
+                          } else {
+                            setConfirmDeleteId(tx.id);
+                          }
+                        }}
+                        onMouseLeave={() => setConfirmDeleteId(null)}
+                        className={`transition-colors p-1 rounded disabled:opacity-30 ${confirmDeleteId === tx.id ? 'bg-red-600 text-white' : 'text-slate-300 hover:text-red-500'}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredTransactions.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-8 py-20 text-center">
+                    <p className="text-slate-400 font-medium italic">No transactions match your search</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {totalPages > 1 && (
+          <div className="px-8 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Showing {Math.min(filteredTransactions.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredTransactions.length, currentPage * itemsPerPage)} of {filteredTransactions.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <div className="flex items-center gap-1">
+                {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                  let pageNum = currentPage;
+                  if (currentPage <= 3) pageNum = i + 1;
+                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = currentPage - 2 + i;
+                  
+                  if (pageNum <= 0 || pageNum > totalPages) return null;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-500 hover:bg-white border border-transparent hover:border-slate-200'}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }, [paginatedTransactions, search, currentPage, totalPages, isProcessing, confirmDeleteId, beneficiaries, panchayats, allMaterials, filteredTransactions.length, itemsPerPage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.schemeId || !formData.quantity || formData.quantity <= 0) return;
     
+    // Duplicate Receipt Detection
+    if (type === 'RECEIPT' && formData.invoiceNo && !editData) {
+      const isDuplicate = transactions.some(t => 
+        t.type === 'RECEIPT' && 
+        t.invoiceNo?.toLowerCase() === formData.invoiceNo?.toLowerCase() &&
+        t.material === formData.material &&
+        t.date === formData.date
+      );
+      if (isDuplicate) {
+        if (!confirm(`Warning: A receipt with Invoice No. "${formData.invoiceNo}" for "${formData.material}" on ${formData.date} already exists. Are you sure you want to add a duplicate entry?`)) {
+          return;
+        }
+      }
+    }
+
     if (type === 'ISSUE') {
       if (!formData.beneficiaryId) return;
       const currentBalance = Storage.getStockBalance(formData.material as MaterialType, transactions);
@@ -100,6 +309,7 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
       beneficiaryId: formData.beneficiaryId,
       invoiceNo: formData.invoiceNo,
       permitNumber: formData.permitNumber,
+      vehicleNo: formData.vehicleNo,
       isOpeningBalance: formData.isOpeningBalance,
       stage: formData.stage,
       timestamp: editData?.timestamp || new Date().toISOString()
@@ -107,10 +317,11 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
     setIsProcessing(true);
     try {
-      await Storage.setTransaction(newTx);
-      await refreshData();
+      await addTransaction(newTx);
       setFormData({ ...formData, quantity: 0, beneficiaryId: '', invoiceNo: '' });
       if (onComplete) onComplete();
+    } catch (e) {
+      alert('Failed to save transaction');
     } finally {
       setIsProcessing(false);
     }
@@ -146,6 +357,25 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
   const currentScheme = schemes.find(s => s.id === formData.schemeId);
   const materialStages = currentScheme?.materialStages?.[formData.material as string] || [];
+
+  // Pre-calculate issued quantities for the selected beneficiary and material to avoid O(N*M) in render
+  const stageIssuedQuantities = useMemo(() => {
+    if (type !== 'ISSUE' || !formData.beneficiaryId || !formData.material) return {};
+    
+    const relevantTxs = transactions.filter(t => 
+      t.beneficiaryId === formData.beneficiaryId && 
+      t.material === formData.material && 
+      t.type === 'ISSUE'
+    );
+
+    const counts: Record<number, number> = {};
+    relevantTxs.forEach(t => {
+      if (t.stage !== undefined) {
+        counts[t.stage] = (counts[t.stage] || 0) + t.quantity;
+      }
+    });
+    return counts;
+  }, [transactions, formData.beneficiaryId, formData.material, type]);
 
   return (
     <div className="p-8 space-y-8">
@@ -217,14 +447,7 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                   
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {materialStages.map(st => {
-                      const issuedForThisStage = transactions
-                        .filter(t => 
-                          t.beneficiaryId === formData.beneficiaryId && 
-                          t.material === formData.material && 
-                          t.stage === st.stageNumber &&
-                          t.type === 'ISSUE'
-                        )
-                        .reduce((acc, t) => acc + t.quantity, 0);
+                      const issuedForThisStage = stageIssuedQuantities[st.stageNumber] || 0;
                       
                       const isCompleted = issuedForThisStage >= st.quantity && st.quantity > 0;
                       const isSelected = formData.stage === st.stageNumber;
@@ -257,7 +480,12 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
               )}
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
+                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase tracking-widest">
+                       {allMaterials.find(m => m.name === formData.material)?.unit || 'units'}
+                    </span>
+                  </div>
                   <input 
                     type="number" 
                     step="0.01"
@@ -292,6 +520,17 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                       onChange={(e) => setFormData({ ...formData, invoiceNo: e.target.value })}
                     />
                   </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vehicle Number (Logistics)</label>
+                    <input 
+                      type="text" 
+                      placeholder="KL-01-AB-1234"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                      value={formData.vehicleNo || ''}
+                      onChange={(e) => setFormData({ ...formData, vehicleNo: e.target.value })}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -309,13 +548,25 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
 
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Individual Recipient</label>
+                    {formData.panchayatId && formData.schemeId && (
+                      <div className="mb-2 relative">
+                        <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="text" 
+                          placeholder="Filter beneficiaries..." 
+                          className="w-full pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] outline-none focus:ring-1 focus:ring-blue-200"
+                          value={benSearch}
+                          onChange={(e) => setBenSearch(e.target.value)}
+                        />
+                      </div>
+                    )}
                     <select 
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
                       value={formData.beneficiaryId || ''}
                       disabled={!formData.panchayatId || !formData.schemeId}
-                      onChange={(e) => setFormData({ ...formData, beneficiaryId: e.target.value })}
+                      onChange={(e) => setBenSearch('') || setFormData({ ...formData, beneficiaryId: e.target.value })}
                     >
-                      <option value="">-- Choose beneficiary --</option>
+                      <option value="">-- Choose beneficiary ({filteredBeneficiaries.length}) --</option>
                       {filteredBeneficiaries.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                     {(!formData.panchayatId || !formData.schemeId) && <p className="text-[10px] text-slate-400 italic">Select panchayat and scheme first</p>}
@@ -329,6 +580,17 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
                       value={formData.permitNumber || ''}
                       onChange={(e) => setFormData({ ...formData, permitNumber: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vehicle Number (Logistics)</label>
+                    <input 
+                      type="text" 
+                      placeholder="KL-01-AB-1234"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                      value={formData.vehicleNo || ''}
+                      onChange={(e) => setFormData({ ...formData, vehicleNo: e.target.value })}
                     />
                   </div>
                 </div>
@@ -346,166 +608,7 @@ export default function StockEntry({ editData, onComplete, isAdmin }: StockEntry
         </div>
 
         {/* Transaction History Log */}
-        <div className="lg:col-span-2 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-8 py-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h3 className="font-black text-slate-900 text-lg flex items-center gap-2 tracking-tight">
-                <History className="w-5 h-5 text-blue-600" /> Activity Log
-              </h3>
-              <p className="text-xs text-slate-500 font-medium tracking-tight">Review latest material movements</p>
-            </div>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Find record..." 
-                className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 outline-none focus:ring-2 focus:ring-blue-100 w-full md:w-64 transition-all"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[800px] custom-scrollbar">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-black border-b border-slate-100 sticky top-0 bg-white z-10">
-                  <th className="px-8 py-4">Timestamp</th>
-                  <th className="px-6 py-4">Action</th>
-                  <th className="px-6 py-4">Asset</th>
-                  <th className="px-6 py-4 text-right">Units</th>
-                  <th className="px-6 py-4">Reference / Entity</th>
-                  <th className="px-8 py-4 text-center">Admin</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 text-xs">
-                {paginatedTransactions.map(tx => (
-                  <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
-                    <td className="px-8 py-4 text-slate-400 font-medium">{format(parseISO(tx.date), 'MMM d, yyyy')}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${tx.type === 'RECEIPT' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                        {tx.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-800">
-                      {tx.material} 
-                      {tx.stage && <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-black uppercase rounded">Stage {tx.stage}</span>}
-                    </td>
-                    <td className={`px-6 py-4 text-right font-black text-sm ${tx.type === 'RECEIPT' ? 'text-emerald-700' : 'text-slate-900'}`}>
-                      {tx.type === 'RECEIPT' ? '+' : ''}{Math.round(tx.quantity).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      {tx.type === 'RECEIPT' ? (
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-700">Invoice: {tx.invoiceNo || 'N/A'}</span>
-                          {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
-                          <span className="text-[10px] text-slate-400">Scheme entry point</span>
-                          {tx.isOpeningBalance && <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 font-black rounded w-fit mt-1">Opening Balance</span>}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col">
-                          <span className="font-bold text-blue-700">{beneficiaries.find(b => b.id === tx.beneficiaryId)?.name}</span>
-                          {tx.permitNumber && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Permit: {tx.permitNumber}</span>}
-                          <span className="text-[10px] text-slate-400">{panchayats.find(p => p.id === tx.panchayatId)?.name}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-8 py-4 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button 
-                          onClick={() => {
-                            const win = window as any;
-                            if (win.ais_edit_tx) win.ais_edit_tx(tx);
-                          }}
-                          className="text-slate-300 hover:text-blue-500 transition-colors p-1"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          type="button"
-                          disabled={isProcessing}
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (confirmDeleteId === tx.id) {
-                              setIsProcessing(true);
-                              try {
-                                await Storage.deleteTransaction(tx.id);
-                                await refreshData();
-                              } finally {
-                                setIsProcessing(false);
-                                setConfirmDeleteId(null);
-                              }
-                            } else {
-                              setConfirmDeleteId(tx.id);
-                            }
-                          }}
-                          onMouseLeave={() => setConfirmDeleteId(null)}
-                          className={`transition-colors p-1 rounded disabled:opacity-30 ${confirmDeleteId === tx.id ? 'bg-red-600 text-white' : 'text-slate-300 hover:text-red-500'}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredTransactions.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-8 py-20 text-center">
-                      <p className="text-slate-400 font-medium italic">No transactions match your search</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="px-8 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Showing {Math.min(filteredTransactions.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredTransactions.length, currentPage * itemsPerPage)} of {filteredTransactions.length}
-              </div>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  Previous
-                </button>
-                <div className="flex items-center gap-1">
-                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                    // Simple pagination logic for 5 pages around current
-                    let pageNum = currentPage;
-                    if (currentPage <= 3) pageNum = i + 1;
-                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
-                    else pageNum = currentPage - 2 + i;
-                    
-                    if (pageNum <= 0 || pageNum > totalPages) return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-500 hover:bg-white border border-transparent hover:border-slate-200'}`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button 
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {TransactionHistory}
       </div>
     </div>
   );

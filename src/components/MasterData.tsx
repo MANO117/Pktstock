@@ -44,7 +44,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
   const [newOverseer, setNewOverseer] = useState('');
   const [newPanchayat, setNewPanchayat] = useState({ name: '', overseerId: '' });
   const [newBeneficiary, setNewBeneficiary] = useState({ name: '', panchayatId: '', schemeId: '', year: new Date().getFullYear().toString() });
-  const [newMaterial, setNewMaterial] = useState({ name: '', unit: 'Bags' });
+  const [newMaterial, setNewMaterial] = useState({ name: '', unit: 'Bags', minStock: 0 });
   const [targetSchemeId, setTargetSchemeId] = useState('');
 
   const [editingScheme, setEditingScheme] = useState<Scheme | null>(null);
@@ -155,7 +155,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
         await Storage.setMaterial({ id: Storage.generateId(), ...newMaterial });
       }
       await refreshData();
-      setNewMaterial({ name: '', unit: 'Bags' });
+      setNewMaterial({ name: '', unit: 'Bags', minStock: 0 });
     } finally {
       setIsProcessing(false);
     }
@@ -544,6 +544,13 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                 value={newMaterial.unit || ''}
                 onChange={(e) => setNewMaterial({ ...newMaterial, unit: e.target.value })}
               />
+              <input 
+                type="number" 
+                placeholder="Alert Level" 
+                className="w-24 px-3 py-1.5 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-100"
+                value={newMaterial.minStock || 0}
+                onChange={(e) => setNewMaterial({ ...newMaterial, minStock: Number(e.target.value) })}
+              />
               <button 
                 onClick={handleAddMaterial} 
                 className={`p-2 px-4 shadow-lg ${editingMaterial ? 'bg-amber-600' : 'bg-indigo-600'} text-white rounded-lg hover:opacity-90 transition font-bold text-xs uppercase tracking-widest`}
@@ -552,7 +559,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
               </button>
               {editingMaterial && (
                 <button 
-                  onClick={() => { setEditingMaterial(null); setNewMaterial({ name: '', unit: 'Bags' }); }} 
+                  onClick={() => { setEditingMaterial(null); setNewMaterial({ name: '', unit: 'Bags', minStock: 0 }); }} 
                   className="p-2 text-slate-400"
                 >
                   <X className="w-4 h-4" />
@@ -565,7 +572,12 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
               <div key={m.id} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl group hover:border-indigo-200 transition-colors">
                 <div className="flex flex-col">
                   <span className="text-xs font-black text-slate-800 uppercase tracking-tight">{m.name}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Unit: {m.unit}</span>
+                  <div className="flex gap-3">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Unit: {m.unit}</span>
+                    {m.minStock && m.minStock > 0 && (
+                      <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Min: {m.minStock}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   {isAdmin && (
@@ -576,7 +588,7 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                           e.preventDefault();
                           e.stopPropagation();
                           setEditingMaterial(m);
-                          setNewMaterial({ name: m.name, unit: m.unit });
+                          setNewMaterial({ name: m.name, unit: m.unit, minStock: m.minStock || 0 });
                         }} className="flex items-center gap-1 text-[10px] font-black uppercase text-slate-400 hover:text-amber-500 p-2 hover:bg-amber-50 rounded-lg transition-colors">
                         <Edit2 className="w-3.5 h-3.5" />
                         Edit

@@ -343,6 +343,7 @@ function AppContent() {
                       </div>
                     )}
                     <StockEntry 
+                      key={editingTransaction ? `edit-${editingTransaction.id}` : 'new-entry'}
                       editData={editingTransaction} 
                       onComplete={() => setEditingTransaction(null)} 
                       isAdmin={isAdmin}

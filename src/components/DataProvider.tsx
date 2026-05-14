@@ -18,6 +18,8 @@ interface DataContextType {
   login: (credentials: any) => Promise<void>;
   logout: () => void;
   refreshData: () => Promise<void>;
+  addTransaction: (tx: StockTransaction) => Promise<void>;
+  removeTransaction: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -44,7 +46,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await Storage.getAllData();
       
-      // Batch updates if possible (React 18 does this automatically, but let's be clean)
+      // Batch updates
       setSchemes(data.schemes || []);
       setOverseers(data.overseers || []);
       setPanchayats(data.panchayats || []);
@@ -53,10 +55,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setTransactions(data.transactions || []);
       setSystemUsers(data.users || []);
       
-      // Cache data for faster initial load next time
+      // Cache data
       localStorage.setItem('cached_stock_pro_data', JSON.stringify(data));
       
-      // Update local user state if changed in backend
       const updatedUser = data.users?.find((u: any) => u.id === user.id);
       if (updatedUser && JSON.stringify(updatedUser) !== JSON.stringify(user)) {
         setUser(updatedUser);
@@ -68,6 +69,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setDataLoading(false);
     }
   }, [user]);
+
+  const addTransaction = useCallback(async (newTx: StockTransaction) => {
+    // Optimistic Update
+    setTransactions(prev => [newTx, ...prev]);
+    
+    try {
+      await Storage.setTransaction(newTx);
+      // We don't strictly need a full refresh here if we trust our optimistic update,
+      // but let's do it in the background to sync server-side fields if any.
+      refreshData();
+    } catch (e) {
+      // Rollback on error
+      setTransactions(prev => prev.filter(tx => tx.id !== newTx.id));
+      throw e;
+    }
+  }, [refreshData]);
+
+  const removeTransaction = useCallback(async (id: string) => {
+    // Optimistic Update
+    setTransactions(prev => prev.filter(tx => tx.id !== id));
+    
+    try {
+      await Storage.deleteTransaction(id);
+      refreshData();
+    } catch (e) {
+      // We'd need the full transaction to rollback properly, 
+      // for now just refresh to get state back.
+      refreshData();
+      throw e;
+    }
+  }, [refreshData]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('app_user');
@@ -127,7 +159,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       dataLoading,
       login,
       logout,
-      refreshData
+      refreshData,
+      addTransaction,
+      removeTransaction
     }}>
       {children}
     </DataContext.Provider>

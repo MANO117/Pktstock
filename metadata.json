@@ -1,5 +1,5 @@
 {
-  "name": "Material Stock Register",
-  "description": "A standalone material stock registry with internal username/password authentication. Features scheme-wise tracking, automated stage-based issuing, and multi-user access control.",
+  "name": "Engineering Material Management System",
+  "description": "Professional civil engineering material register with automated ledgers, scheme consumption tracking, and executive analytics. Features government-grade reporting (PDF/Excel), multi-user audit trails, and stage-based beneficiary distribution.",
   "requestFramePermissions": []
 }

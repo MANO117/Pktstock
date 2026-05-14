@@ -148,6 +148,48 @@ export const Storage = {
   }),
   deleteTransaction: (id: string) => Engine.request(`/transactions/${id}`, { method: 'DELETE' }),
 
+  sortTransactions: (transactions: StockTransaction[]) => {
+    return [...transactions].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+  },
+
+  calculateRunningBalances: (transactions: StockTransaction[], material: string, filters?: { schemeId?: string, panchayatId?: string, schemeIds?: string[], panchayatIds?: string[] }) => {
+    let filtered = transactions.filter(t => t.material === material);
+    
+    if (filters?.schemeIds && filters.schemeIds.length > 0) {
+      filtered = filtered.filter(t => filters.schemeIds!.includes(t.schemeId));
+    } else if (filters?.schemeId && filters.schemeId !== 'All') {
+      filtered = filtered.filter(t => t.schemeId === filters.schemeId);
+    }
+
+    if (filters?.panchayatIds && filters.panchayatIds.length > 0) {
+      filtered = filtered.filter(t => t.panchayatId && filters.panchayatIds!.includes(t.panchayatId));
+    } else if (filters?.panchayatId && filters.panchayatId !== 'All') {
+      filtered = filtered.filter(t => t.panchayatId === filters.panchayatId);
+    }
+    
+    const sorted = Storage.sortTransactions(filtered);
+    let balance = 0;
+    return sorted.map(t => {
+      const prevBalance = balance;
+      if (t.type === 'RECEIPT') balance += t.quantity;
+      else balance -= t.quantity;
+      return { ...t, openingBalance: prevBalance, closingBalance: balance };
+    });
+  },
+
+  getFinancialYear: (date: Date = new Date()) => {
+    const year = date.getFullYear();
+    if (date.getMonth() >= 3) { // April onwards
+      return `${year}-${year + 1}`;
+    }
+    return `${year - 1}-${year}`;
+  },
+
   calculateDailyBalance: (material: MaterialType, targetDate: string, transactions: StockTransaction[]) => {
     const targetDateObj = parseISO(targetDate);
     const targetStart = startOfDay(targetDateObj);
@@ -163,7 +205,7 @@ export const Storage = {
       const tDate = parseISO(t.date);
       const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
 
-      if (tDate < targetStart) {
+      if (tDate < targetStart || (tDate <= targetEnd && t.isOpeningBalance)) {
         openingBalance += amount;
       } else if (tDate <= targetEnd) {
         if (t.type === 'RECEIPT') receipts += t.quantity;
@@ -195,7 +237,7 @@ export const Storage = {
       const tDate = parseISO(t.date);
       const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
 
-      if (tDate < targetStart) {
+      if (tDate < targetStart || (tDate <= targetEnd && t.isOpeningBalance)) {
         results[t.material].openingBalance += amount;
       } else if (tDate <= targetEnd) {
         if (t.type === 'RECEIPT') results[t.material].receipts += t.quantity;

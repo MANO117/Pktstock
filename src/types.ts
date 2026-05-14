@@ -4,6 +4,7 @@ export interface Material {
   id: string;
   name: string;
   unit: string;
+  minStock?: number;
 }
 
 export interface SchemeMaterialStage {
@@ -52,6 +53,7 @@ export interface StockTransaction {
   invoiceNo?: string;
   invoiceUrl?: string; // Simulated
   permitNumber?: string;
+  vehicleNo?: string;
   notes?: string;
   stage?: number;
   isOpeningBalance?: boolean;

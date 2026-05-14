@@ -77,17 +77,17 @@ export default function StockView() {
               Material: {b.material}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
                 <div className="text-[10px] text-slate-500 font-black mb-2 uppercase tracking-widest">Opening Balance</div>
                 <div className="text-3xl font-black text-slate-900 leading-none">
-                  {Math.round(b.openingBalance).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">units</span>
+                  {Math.round(b.openingBalance).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">{materialsData.find(m => m.name === b.material)?.unit || 'units'}</span>
                 </div>
               </div>
               
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
                 <div className="text-[10px] text-slate-500 font-black mb-2 uppercase tracking-widest">Receipts (Today)</div>
                 <div className="text-3xl font-black text-emerald-600 leading-none relative z-10">
-                  +{Math.round(b.receipts).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">units</span>
+                  +{Math.round(b.receipts).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">{materialsData.find(m => m.name === b.material)?.unit || 'units'}</span>
                 </div>
                 <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-50 rounded-full -mr-8 -mt-8 transition-transform group-hover:scale-150"></div>
               </div>
@@ -95,7 +95,7 @@ export default function StockView() {
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
                 <div className="text-[10px] text-slate-500 font-black mb-2 uppercase tracking-widest">Issues (Today)</div>
                 <div className="text-3xl font-black text-amber-500 leading-none relative z-10">
-                  {Math.round(b.issues).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">units</span>
+                  {Math.round(b.issues).toLocaleString()} <span className="text-xs font-medium text-slate-400 uppercase tracking-normal">{materialsData.find(m => m.name === b.material)?.unit || 'units'}</span>
                 </div>
                 <div className="absolute top-0 right-0 w-16 h-16 bg-amber-50 rounded-full -mr-8 -mt-8 transition-transform group-hover:scale-150"></div>
               </div>
@@ -103,11 +103,68 @@ export default function StockView() {
               <div className="bg-slate-900 p-6 rounded-2xl shadow-xl text-white relative overflow-hidden border border-slate-700">
                 <div className="text-[10px] text-blue-400 font-black mb-2 uppercase tracking-widest">Closing Balance</div>
                 <div className="text-3xl font-black leading-none">
-                  {Math.round(b.closingBalance).toLocaleString()} <span className="text-xs font-medium text-slate-500 uppercase tracking-normal">units</span>
+                  {Math.round(b.closingBalance).toLocaleString()} <span className="text-xs font-medium text-slate-500 uppercase tracking-normal">{materialsData.find(m => m.name === b.material)?.unit || 'units'}</span>
                 </div>
                 <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500 rounded-full -mr-8 -mt-8 opacity-20"></div>
               </div>
             </div>
+
+            {/* Daily Ledger Table */}
+            {(b.receipts > 0 || b.issues > 0) && (
+              <div className="mt-4 bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-left text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 font-black uppercase text-slate-400 tracking-widest">
+                      <th className="px-4 py-2">Time/ID</th>
+                      <th className="px-4 py-2">Movement</th>
+                      <th className="px-4 py-2">Particulars</th>
+                      <th className="px-4 py-2 text-right">Qty</th>
+                      <th className="px-4 py-2 text-right">Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {(() => {
+                      const dailyTxs = Storage.sortTransactions(transactions.filter(t => t.material === b.material && t.date === date && !t.isOpeningBalance));
+                      let currentBalance = b.openingBalance;
+                      return dailyTxs.map(tx => {
+                        const prevBalance = currentBalance;
+                        if (tx.type === 'RECEIPT') currentBalance += tx.quantity;
+                        else currentBalance -= tx.quantity;
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-2 text-slate-400">
+                              {tx.timestamp ? format(new Date(tx.timestamp), 'HH:mm') : '--:--'}
+                              <span className="ml-2 opacity-50">#{tx.id.slice(0, 4)}</span>
+                            </td>
+                            <td className="px-4 py-2">
+                              {tx.type === 'RECEIPT' ? (
+                                <span className="text-emerald-600 font-black flex items-center gap-1">
+                                  <ArrowRight className="w-2.5 h-2.5" /> RECEIPT
+                                </span>
+                              ) : (
+                                <span className="text-amber-600 font-black flex items-center gap-1">
+                                  <ArrowLeft className="w-2.5 h-2.5" /> ISSUE
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 font-medium text-slate-600 uppercase tracking-tighter">
+                              {tx.invoiceNo ? `Inv: ${tx.invoiceNo}` : (tx.isOpeningBalance ? 'Opening Balance Entry' : 'Manual Entry')}
+                              {tx.stage ? ` (Stage ${tx.stage})` : ''}
+                            </td>
+                            <td className={`px-4 py-2 text-right font-black ${tx.type === 'RECEIPT' ? 'text-emerald-700' : 'text-slate-900'}`}>
+                              {tx.type === 'RECEIPT' ? '+' : '-'}{tx.quantity.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2 text-right font-black text-slate-500">
+                              {currentBalance.toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         ))}
       </div>

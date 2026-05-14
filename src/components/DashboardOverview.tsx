@@ -3,15 +3,11 @@ import { Storage } from '../lib/storage';
 import { useData } from './DataProvider';
 import { StockTransaction, MaterialType, Scheme, Overseer, Panchayat } from '../types';
 import { 
-  BarChart3, 
-  TrendingUp, 
-  TrendingDown, 
   Package, 
   Calendar, 
-  Filter,
   Users,
-  MapPin,
-  ChevronDown
+  Activity,
+  ClipboardList
 } from 'lucide-react';
 import { 
   format, 
@@ -25,8 +21,11 @@ import {
   endOfYear,
   isWithinInterval,
   parseISO,
-  subDays
+  subDays,
+  eachDayOfInterval,
+  isSameDay
 } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface DashboardOverviewProps {
   onNavigate: (tab: any) => void;
@@ -34,318 +33,443 @@ interface DashboardOverviewProps {
 }
 
 export default function DashboardOverview({ onNavigate, isAdmin }: DashboardOverviewProps) {
-  const { transactions, schemes, overseers, panchayats, materials: allMaterials } = useData();
+  const { transactions, schemes, overseers, panchayats, materials: allMaterials, beneficiaries } = useData();
   const [dateRange, setDateRange] = useState<{start: string, end: string}>({
-    start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
   });
-  const [selectedMaterial, setSelectedMaterial] = useState<MaterialType | 'All'>('All');
 
-  const materials = useMemo(() => allMaterials.map(m => m.name), [allMaterials]);
-
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      const dateMatch = isWithinInterval(parseISO(t.date), {
-        start: startOfDay(parseISO(dateRange.start)),
-        end: endOfDay(parseISO(dateRange.end))
-      });
-      const materialMatch = selectedMaterial === 'All' || t.material === selectedMaterial;
-      return dateMatch && materialMatch;
+  // Pre-process transactions for faster lookup
+  const txIndexes = useMemo(() => {
+    const byBeneficiary: Record<string, StockTransaction[]> = {};
+    const byMaterial: Record<string, StockTransaction[]> = {};
+    
+    transactions.forEach(t => {
+      if (t.beneficiaryId) {
+        if (!byBeneficiary[t.beneficiaryId]) byBeneficiary[t.beneficiaryId] = [];
+        byBeneficiary[t.beneficiaryId].push(t);
+      }
+      if (!byMaterial[t.material]) byMaterial[t.material] = [];
+      byMaterial[t.material].push(t);
     });
-  }, [transactions, dateRange, selectedMaterial]);
-
-  // Totals
-  const quantities = useMemo(() => {
-    const now = new Date();
-    const dayStart = startOfDay(now);
-    const dayEnd = endOfDay(now);
-    const weekStart = startOfWeek(now);
-    const weekEnd = endOfWeek(now);
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
-    const yearStart = startOfYear(now);
-    const yearEnd = endOfYear(now);
-
-    let d = 0, w = 0, m = 0, y = 0;
-
-    for (const t of transactions) {
-      if (t.type !== 'ISSUE') continue;
-      const tDate = parseISO(t.date);
-      if (tDate >= dayStart && tDate <= dayEnd) d += t.quantity;
-      if (tDate >= weekStart && tDate <= weekEnd) w += t.quantity;
-      if (tDate >= monthStart && tDate <= monthEnd) m += t.quantity;
-      if (tDate >= yearStart && tDate <= yearEnd) y += t.quantity;
-    }
-
-    return { daily: d, weekly: w, monthly: m, yearly: y };
+    
+    return { byBeneficiary, byMaterial };
   }, [transactions]);
 
-  // Rankings optimized to avoid nested filters over large datasets
-  const rankings = useMemo(() => {
-    const panchayatTotals: Record<string, number> = {};
-    for (const t of transactions) {
-      if (t.type === 'ISSUE' && t.panchayatId) {
-        panchayatTotals[t.panchayatId] = (panchayatTotals[t.panchayatId] || 0) + t.quantity;
+  // Calculate opening, receipts, issues, closing for all materials
+  const materialSummary = useMemo(() => {
+    const start = startOfDay(parseISO(dateRange.start));
+    const end = endOfDay(parseISO(dateRange.end));
+
+    return allMaterials.map(m => {
+      let opening = 0;
+      let receipts = 0;
+      let issues = 0;
+
+      const matTxs = txIndexes.byMaterial[m.name] || [];
+      matTxs.forEach(t => {
+        const tDate = parseISO(t.date);
+        const amount = t.type === 'RECEIPT' ? t.quantity : -t.quantity;
+
+        if (tDate < start || (t.isOpeningBalance && tDate <= end)) {
+          opening += amount;
+        } else if (tDate <= end) {
+          if (t.type === 'RECEIPT') receipts += t.quantity;
+          else issues += t.quantity;
+        }
+      });
+
+      return {
+        name: m.name,
+        unit: m.unit,
+        opening,
+        receipts,
+        issues,
+        closing: opening + receipts - issues
+      };
+    });
+  }, [allMaterials, txIndexes.byMaterial, dateRange]);
+
+  // Overseer Performance (Stage-wise leading)
+  const overseerPerformance = useMemo(() => {
+    return overseers.map(o => {
+      const assignedPanchayats = new Set(panchayats.filter(p => p.overseerId === o.id).map(p => p.id));
+      const assignedBens = beneficiaries.filter(b => assignedPanchayats.has(b.panchayatId));
+      
+      let totalProgress = 0;
+      const stageDistribution: Record<number, number> = {};
+
+      assignedBens.forEach(b => {
+        let maxSt = 0;
+        const benTxs = txIndexes.byBeneficiary[b.id] || [];
+        benTxs.forEach(t => {
+          if (t.type === 'ISSUE') {
+            if ((t.stage || 1) > maxSt) maxSt = t.stage || 1;
+          }
+        });
+        if (maxSt > 0) {
+          stageDistribution[maxSt] = (stageDistribution[maxSt] || 0) + 1;
+          totalProgress += 1;
+        }
+      });
+
+      const leadingStage = Object.entries(stageDistribution).sort((a,b) => Number(b[0]) - Number(a[0]))[0];
+
+      return {
+        id: o.id,
+        name: o.name,
+        activeBens: assignedBens.length,
+        progressedBens: totalProgress,
+        leadingStage: leadingStage ? `Stage ${leadingStage[0]}` : 'N/A',
+        leadingCount: leadingStage ? leadingStage[1] : 0,
+        panchayatCount: assignedPanchayats.size
+      };
+    }).sort((a,b) => b.progressedBens - a.progressedBens);
+  }, [overseers, panchayats, beneficiaries, txIndexes.byBeneficiary]);
+
+  // Calculate overseer-stage details if an overseer is selected
+  const [activeOverseerId, setActiveOverseerId] = useState<string | null>(null);
+
+  const overseerStageDetails = useMemo(() => {
+    if (!activeOverseerId) return null;
+    
+    const o = overseers.find(ov => ov.id === activeOverseerId);
+    if (!o) return null;
+
+    const assignedPanchayatIds = new Set(panchayats.filter(p => p.overseerId === o.id).map(p => p.id));
+    const assignedBens = beneficiaries.filter(b => assignedPanchayatIds.has(b.panchayatId));
+    const assignedBenIds = new Set(assignedBens.map(b => b.id));
+    
+    // Get unique stages from all schemes
+    const stagesFromSchemes = new Set<number>();
+    schemes.forEach(s => {
+      if (s.materialStages) {
+        Object.keys(s.materialStages).forEach(matKey => {
+          const stagesList = s.materialStages![matKey];
+          stagesList.forEach(st => stagesFromSchemes.add(st.stageNumber));
+        });
       }
-    }
-
-    const pAllocations = panchayats.map(p => ({
-      ...p,
-      totalQty: panchayatTotals[p.id] || 0
-    })).sort((a, b) => b.totalQty - a.totalQty);
-
-    const oIssues = overseers.map(o => {
-      const myPanchayats = panchayats.filter(p => p.overseerId === o.id);
-      const totalQty = myPanchayats.reduce((sum, p) => sum + (panchayatTotals[p.id] || 0), 0);
-      return { ...o, totalQty };
-    }).sort((a, b) => b.totalQty - a.totalQty);
-
-    return { overseerIssues: oIssues, panchayatAllocations: pAllocations };
-  }, [transactions, overseers, panchayats]);
-
-  // Table Balances optimized calculation
-  const tableBalances = useMemo(() => {
-    const targetStart = startOfDay(parseISO(dateRange.start));
-    const targetEnd = endOfDay(parseISO(dateRange.end));
-
-    const stats: Record<string, {opening: number, receipts: number, issues: number}> = {};
-    materials.forEach(m => {
-      stats[m] = { opening: 0, receipts: 0, issues: 0 };
     });
 
-    for (const t of transactions) {
-      if (!stats[t.material]) continue;
-      const tDate = parseISO(t.date);
-      
-      if (tDate < targetStart) {
-        stats[t.material].opening += (t.type === 'RECEIPT' ? t.quantity : -t.quantity);
-      } else if (tDate <= targetEnd) {
-        if (t.type === 'RECEIPT') stats[t.material].receipts += t.quantity;
-        else stats[t.material].issues += t.quantity;
-      }
+    if (stagesFromSchemes.size === 0) {
+      transactions.forEach(t => {
+        if (t.stage) stagesFromSchemes.add(t.stage);
+      });
     }
 
-    return Object.entries(stats)
-      .filter(([m]) => selectedMaterial === 'All' || m === selectedMaterial)
-      .map(([material, s]) => ({
-        material,
-        opening: s.opening,
-        receipts: s.receipts,
-        issues: s.issues,
-        closing: s.opening + s.receipts - s.issues
-      }));
-  }, [transactions, materials, dateRange, selectedMaterial]);
+    if (stagesFromSchemes.size === 0) stagesFromSchemes.add(1);
 
-  const receiptsCount = filteredTransactions.filter(t => t.type === 'RECEIPT').length;
-  const issuesCount = filteredTransactions.filter(t => t.type === 'ISSUE').length;
+    const sortedStages = Array.from(stagesFromSchemes).sort((a, b) => a - b);
+
+    const details = sortedStages.map(st => {
+      const matStats: Record<string, { eligible: number, taken: number, pending: number, quantity: number }> = {};
+      const stageEligibleBens = new Set<string>();
+      const stageTakenBens = new Set<string>();
+      let stageTotalQuantity = 0;
+      
+      allMaterials.forEach(m => {
+        const bensEligibleForStage = assignedBens.filter(b => {
+          const scheme = schemes.find(s => s.id === b.schemeId);
+          return scheme?.materialStages?.[m.name]?.some(stage => stage.stageNumber === st);
+        });
+
+        const matTxs = txIndexes.byMaterial[m.name] || [];
+        const txsAtStage = matTxs.filter(t => 
+          t.stage === st && 
+          t.type === 'ISSUE' &&
+          t.beneficiaryId && assignedBenIds.has(t.beneficiaryId)
+        );
+
+        const bensWhoTookIds = Array.from(new Set(txsAtStage.map(t => t.beneficiaryId as string)));
+        const bensWhoTookCount = bensWhoTookIds.length;
+        const totalQty = txsAtStage.reduce((acc, curr) => acc + curr.quantity, 0);
+        
+        if (bensEligibleForStage.length > 0 || bensWhoTookCount > 0) {
+          const pendingValue = Math.max(0, bensEligibleForStage.length - bensWhoTookCount);
+
+          matStats[m.name] = {
+            eligible: bensEligibleForStage.length,
+            taken: bensWhoTookCount,
+            pending: pendingValue,
+            quantity: totalQty
+          };
+
+          bensEligibleForStage.forEach(b => stageEligibleBens.add(b.id as string));
+          bensWhoTookIds.forEach(id => stageTakenBens.add(id as string));
+          stageTotalQuantity += totalQty;
+        }
+      });
+
+      return {
+        stage: `Stage ${st}`,
+        materials: matStats,
+        totals: {
+          eligible: stageEligibleBens.size,
+          taken: stageTakenBens.size,
+          pending: Math.max(0, stageEligibleBens.size - stageTakenBens.size),
+          quantity: stageTotalQuantity
+        }
+      };
+    });
+
+    return {
+      overseerName: o.name,
+      totalBens: assignedBens.length,
+      stages: details
+    };
+  }, [activeOverseerId, overseers, panchayats, beneficiaries, transactions, txIndexes.byMaterial, allMaterials, schemes]);
+
+  // Calculate Material-wise Grand Totals for the selected overseer
+  const materialGrandTotals = useMemo(() => {
+    if (!activeOverseerId) return [];
+    
+    const o = overseers.find(ov => ov.id === activeOverseerId);
+    if (!o) return [];
+
+    const assignedPanchayatIds = new Set(panchayats.filter(p => p.overseerId === o.id).map(p => p.id));
+    const assignedBens = beneficiaries.filter(b => assignedPanchayatIds.has(b.panchayatId));
+    const assignedBenIds = new Set(assignedBens.map(b => b.id));
+
+    return allMaterials.map(m => {
+      const eligibleBens = assignedBens.filter(b => {
+        const scheme = schemes.find(s => s.id === b.schemeId);
+        return scheme?.materialStages?.[m.name] && Object.keys(scheme.materialStages[m.name]).length > 0;
+      });
+
+      const matTxs = txIndexes.byMaterial[m.name] || [];
+      const txs = matTxs.filter(t => 
+        t.type === 'ISSUE' &&
+        t.beneficiaryId && assignedBenIds.has(t.beneficiaryId)
+      );
+
+      const uniqueBensTakenAtLeastOnce = new Set(txs.map(t => t.beneficiaryId)).size;
+      const totalQuantity = txs.reduce((acc, curr) => acc + curr.quantity, 0);
+
+      return {
+        name: m.name,
+        eligible: eligibleBens.length,
+        taken: uniqueBensTakenAtLeastOnce,
+        pending: Math.max(0, eligibleBens.length - uniqueBensTakenAtLeastOnce),
+        quantity: totalQuantity
+      };
+    }).filter(m => m.eligible > 0 || m.taken > 0);
+  }, [activeOverseerId, overseers, panchayats, beneficiaries, txIndexes.byMaterial, allMaterials, schemes]);
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
-      {/* Header & Main Filters */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      {/* Dynamic Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase tracking-widest flex items-center gap-3">
-             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-600/20"><BarChart3 className="w-6 h-6" /></div>
-             Executive Analytics
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            <ClipboardList className="w-8 h-8 text-blue-600" />
+            Inventory & Progression Dashboard
           </h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-tighter mt-1">Real-time infrastructure stock intelligence</p>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-2 border-r pr-4 border-slate-100">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <input 
-              type="date" 
-              className="text-xs font-bold outline-none bg-transparent"
-              value={dateRange.start}
-              onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
-            />
-            <span className="text-slate-300">to</span>
-            <input 
-              type="date" 
-              className="text-xs font-bold outline-none bg-transparent"
-              value={dateRange.end}
-              onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-400" />
-            <select 
-              className="text-xs font-bold outline-none bg-transparent appearance-none cursor-pointer pr-4"
-              value={selectedMaterial}
-              onChange={(e) => setSelectedMaterial(e.target.value as any)}
-            >
-              <option value="All">All Materials</option>
-              {materials.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Frequency Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Issues Today', count: quantities.daily, color: 'blue' },
-          { label: 'Weekly Issues', count: quantities.weekly, color: 'indigo' },
-          { label: 'Monthly Issues', count: quantities.monthly, color: 'emerald' },
-          { label: 'Yearly Issues', count: quantities.yearly, color: 'amber' },
-        ].map((stat, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-400 transition-colors">
-            <div className={`text-3xl font-black text-slate-900 mb-1 group-hover:text-${stat.color}-600 transition-colors`}>
-              {Math.round(stat.count).toLocaleString()}
-            </div>
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{stat.label}</div>
-            <div className={`absolute -right-4 -bottom-4 w-16 h-16 bg-${stat.color}-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity`}></div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Ledger Overview */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-              <h3 className="font-black text-slate-900 text-sm uppercase tracking-widest flex items-center gap-2">
-                <Package className="w-4 h-4 text-blue-600" /> Stock Balances
-              </h3>
-              <p className="text-[10px] text-slate-400 font-bold italic">Calculated for selected period</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-50">
-                    <th className="px-8 py-4">Asset Name</th>
-                    <th className="px-4 py-4 text-right">Opening</th>
-                    <th className="px-4 py-4 text-right text-emerald-600">Receipts (+)</th>
-                    <th className="px-4 py-4 text-right text-amber-600">Issues</th>
-                    <th className="px-8 py-4 text-right bg-slate-50/50">Closing</th>
-                  </tr>
-                </thead>
-                <tbody className="text-xs divide-y divide-slate-50">
-                  {tableBalances.map(bal => (
-                    <tr key={bal.material} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-8 py-4 font-bold text-slate-800">{bal.material}</td>
-                      <td className="px-4 py-4 text-right font-medium text-slate-500">{Math.round(bal.opening).toLocaleString()}</td>
-                      <td className="px-4 py-4 text-right font-bold text-emerald-600">+{Math.round(bal.receipts).toLocaleString()}</td>
-                      <td className="px-4 py-4 text-right font-bold text-amber-600">{Math.round(bal.issues).toLocaleString()}</td>
-                      <td className="px-8 py-4 text-right font-black bg-blue-50/20 text-blue-900">{Math.round(bal.closing).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Activity Breakdown */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600"><TrendingUp className="w-5 h-5" /></div>
-                  <h4 className="font-black text-slate-900 uppercase tracking-widest text-xs">Receipt Highlights</h4>
-                </div>
-                <div className="space-y-4">
-                  {filteredTransactions.filter(t => t.type === 'RECEIPT').slice(0, 3).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center pb-3 border-b border-slate-50 last:border-0">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">{tx.material}</p>
-                        <p className="text-[9px] text-slate-400 font-medium">Invoice: {tx.invoiceNo || 'N/A'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-black text-emerald-600">+{Math.round(tx.quantity).toLocaleString()}</p>
-                        <p className="text-[8px] text-slate-400 uppercase font-black">{format(parseISO(tx.date), 'MMM d')}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {receiptsCount === 0 && <p className="text-center py-6 text-slate-400 text-[10px] italic">No receipts in range</p>}
-                </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-amber-50 rounded-lg text-amber-600"><TrendingDown className="w-5 h-5" /></div>
-                  <h4 className="font-black text-slate-900 uppercase tracking-widest text-xs">Distribution Flow</h4>
-                </div>
-                <div className="space-y-4">
-                  {filteredTransactions.filter(t => t.type === 'ISSUE').slice(0, 3).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center pb-3 border-b border-slate-50 last:border-0">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">{tx.material}</p>
-                        <p className="text-[9px] text-slate-400 font-medium">{panchayats.find(p => p.id === tx.panchayatId)?.name}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-black text-amber-600">{Math.round(tx.quantity).toLocaleString()}</p>
-                        <p className="text-[8px] text-slate-400 uppercase font-black">{format(parseISO(tx.date), 'MMM d')}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {issuesCount === 0 && <p className="text-center py-6 text-slate-400 text-[10px] italic">No issues in range</p>}
-                </div>
-            </div>
-          </div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1">
+            Financial Year Analysis: {Storage.getFinancialYear()}
+          </p>
         </div>
 
-        {/* Sidebar Rankings */}
-        <div className="space-y-8">
-           {/* Overseer Ranking */}
-           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="font-black text-slate-900 text-[10px] uppercase tracking-[0.2em] mb-6 flex items-center justify-between">
-                 Staff Efficiency <Users className="w-4 h-4 text-blue-500" />
-              </h3>
-              <div className="space-y-4">
-                 {rankings.overseerIssues.slice(0, 5).map((o, idx) => (
-                   <div key={o.id} className="flex items-center gap-4">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${idx === 0 ? 'bg-amber-100 text-amber-700 shadow-md shadow-amber-500/10' : 'bg-slate-100 text-slate-500'}`}>
-                         {idx + 1}
-                      </div>
-                      <div className="flex-1">
-                         <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs font-bold text-slate-800 tracking-tight">{o.name}</span>
-                            <span className="text-[10px] font-black text-blue-600">{o.totalQty.toLocaleString()} Units</span>
-                         </div>
-                         <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                            <div 
-                              className="bg-blue-600 h-full rounded-full transition-all duration-1000" 
-                              style={{ width: `${(o.totalQty / Math.max(...rankings.overseerIssues.map(oi => oi.totalQty), 1)) * 100}%` }}
-                            ></div>
-                         </div>
-                      </div>
-                   </div>
-                 ))}
-              </div>
-           </div>
-
-           {/* Panchayat Allocation */}
-           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="font-black text-slate-900 text-[10px] uppercase tracking-[0.2em] mb-6 flex items-center justify-between">
-                 Zone Allocation <MapPin className="w-4 h-4 text-emerald-500" />
-              </h3>
-              <div className="space-y-4">
-                 {rankings.panchayatAllocations.slice(0, 5).map((p, idx) => (
-                   <div key={p.id} className="flex items-center gap-4">
-                      <div className="flex-1">
-                         <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs font-bold text-slate-800 tracking-tight">{p.name}</span>
-                            <span className="text-[10px] font-black text-slate-500">{p.totalQty.toLocaleString()} Total</span>
-                         </div>
-                         <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden border border-slate-100">
-                            <div 
-                              className="bg-emerald-500 h-full rounded-full transition-all duration-1000" 
-                              style={{ width: `${(p.totalQty / Math.max(...rankings.panchayatAllocations.map(pa => pa.totalQty), 1)) * 100}%` }}
-                            ></div>
-                         </div>
-                      </div>
-                   </div>
-                 ))}
-              </div>
-              <button 
-                onClick={() => onNavigate('view')}
-                className="w-full mt-6 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all"
-              >
-                View Full Scale Ledger
-              </button>
+        <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200">
+           <Calendar className="w-5 h-5 text-slate-400" />
+           <div className="flex items-center gap-2">
+              <input 
+                type="date" 
+                className="text-[11px] font-black uppercase outline-none bg-transparent"
+                value={dateRange.start}
+                onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
+              />
+              <span className="text-slate-300 font-bold">→</span>
+              <input 
+                type="date" 
+                className="text-[11px] font-black uppercase outline-none bg-transparent"
+                value={dateRange.end}
+                onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
+              />
            </div>
         </div>
       </div>
+
+      {/* Material Summary Table */}
+      <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
+        <div className="px-10 py-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+           <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+             <Package className="w-4 h-4 text-blue-500" /> Material Summary Ledger
+           </h3>
+           <span className="text-[10px] font-black text-slate-400 uppercase">Opening - Receipt - Issues - Closing</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-white border-b border-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
+                <th className="px-10 py-5">Material Asset</th>
+                <th className="px-8 py-5 text-right">Opening</th>
+                <th className="px-8 py-5 text-right">Receipts</th>
+                <th className="px-8 py-5 text-right">Issues</th>
+                <th className="px-10 py-5 text-right">Closing</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+               {materialSummary.map((m, i) => (
+                 <tr key={m.name} className="hover:bg-slate-50/50 transition-colors">
+                   <td className="px-10 py-6">
+                      <p className="font-black text-slate-900 uppercase text-xs">{m.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter">{m.unit}</p>
+                   </td>
+                   <td className="px-8 py-6 text-right font-black text-slate-500">{m.opening.toLocaleString()}</td>
+                   <td className="px-8 py-6 text-right font-black text-emerald-600">+{m.receipts.toLocaleString()}</td>
+                   <td className="px-8 py-6 text-right font-black text-red-600">-{m.issues.toLocaleString()}</td>
+                   <td className="px-10 py-6 text-right">
+                      <span className={`px-4 py-1.5 rounded-xl font-black text-sm ${m.closing < 0 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600 shadow-sm shadow-blue-100'}`}>
+                        {m.closing.toLocaleString()}
+                      </span>
+                   </td>
+                 </tr>
+               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Overseer Leaderboard with Drill-down capability */}
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden p-8 shadow-sm flex flex-col">
+           <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-10 flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-600" /> Overseer Audit (Click for Details)
+           </h3>
+           <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
+              {overseerPerformance.map((o, idx) => (
+                <div 
+                  key={o.id} 
+                  onClick={() => setActiveOverseerId(o.id === activeOverseerId ? null : o.id)}
+                  className={`p-5 rounded-3xl border transition-all cursor-pointer group ${o.id === activeOverseerId ? 'bg-blue-600 border-blue-700 text-white shadow-xl shadow-blue-600/20 translate-x-2' : 'bg-slate-50 border-slate-100 hover:border-blue-200'}`}
+                >
+                   <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black ${o.id === activeOverseerId ? 'bg-white text-blue-600' : 'bg-slate-900 text-white'}`}>{idx + 1}</div>
+                         <div>
+                            <p className={`text-xs font-black uppercase ${o.id === activeOverseerId ? 'text-white' : 'text-slate-900'}`}>{o.name}</p>
+                            <p className={`text-[9px] font-bold uppercase tracking-tighter ${o.id === activeOverseerId ? 'text-blue-100' : 'text-slate-400'}`}>{o.panchayatCount} Panchayats Assigned</p>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${o.id === activeOverseerId ? 'bg-blue-500 text-white border border-blue-400' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
+                            {o.leadingStage}
+                         </span>
+                      </div>
+                   </div>
+                   <div className="flex items-center gap-4">
+                      <div className={`flex-1 h-2 rounded-full overflow-hidden ${o.id === activeOverseerId ? 'bg-blue-700' : 'bg-slate-200'}`}>
+                        <div className={`h-full rounded-full ${o.id === activeOverseerId ? 'bg-white' : 'bg-blue-600'}`} style={{ width: `${(o.progressedBens / (o.activeBens || 1)) * 100}%` }}></div>
+                      </div>
+                      <span className={`text-[10px] font-black whitespace-nowrap ${o.id === activeOverseerId ? 'text-white' : 'text-slate-900'}`}>
+                        {o.progressedBens} / {o.activeBens} Dispatch
+                      </span>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Drill-down Detail View */}
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden p-8 shadow-sm">
+           {overseerStageDetails ? (
+             <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+                   <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">{overseerStageDetails.overseerName} Detailed Analysis</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Total Beneficiaries: {overseerStageDetails.totalBens}</p>
+                   </div>
+                   <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                      <Activity className="w-5 h-5" />
+                   </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                   <table className="w-full text-left">
+                      <thead>
+                         <tr className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100 font-mono">
+                            <th className="pb-4 px-2">Progress Stage</th>
+                            <th className="pb-4 px-2 text-center">Bens</th>
+                            <th className="pb-4 px-2">Material</th>
+                            <th className="pb-4 px-2 text-right">Taken</th>
+                            <th className="pb-4 px-2 text-right text-red-500">Pending</th>
+                            <th className="pb-4 px-2 text-right">Quantity</th>
+                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                         {overseerStageDetails.stages.map((st, i) => (
+                           <React.Fragment key={i}>
+
+                              {Object.entries(st.materials).map(([mat, stats], idx) => (
+                                <tr key={`${i}-${idx}`} className="hover:bg-slate-50/50 group border-b border-slate-50">
+                                   {idx === 0 && (
+                                     <td rowSpan={Object.keys(st.materials).length} className="py-4 px-2 text-[10px] font-black text-slate-900 align-top border-r border-slate-50">
+                                       {st.stage}
+                                     </td>
+                                   )}
+                                   <td className="py-3 px-2 text-center">
+                                      <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
+                                        {(stats as any).eligible}
+                                      </span>
+                                   </td>
+                                   <td className="py-3 px-2 text-[10px] font-bold text-slate-600 uppercase">{mat}</td>
+                                   <td className="py-3 px-2 text-right">
+                                      <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{(stats as any).taken}</span>
+                                   </td>
+                                   <td className="py-3 px-2 text-right">
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${ (stats as any).pending > 0 ? 'bg-red-100 text-red-700 border border-red-200 shadow-sm shadow-red-100' : 'bg-slate-50 text-slate-400'}`}>
+                                        {(stats as any).pending}
+                                      </span>
+                                   </td>
+                                   <td className="py-3 px-2 text-right text-[10px] font-black text-slate-900">
+                                      {(stats as any).quantity.toLocaleString()}
+                                   </td>
+                                </tr>
+                              ))}
+
+                           </React.Fragment>
+                         ))}
+                         {/* Material Grand Totals */}
+                         <tr className="border-t-4 border-slate-900">
+                            <td colSpan={6} className="py-6 px-4 text-xs font-black text-white uppercase tracking-[0.2em] bg-slate-900">
+                               Overseer Material Audit Recap
+                            </td>
+                         </tr>
+                         {materialGrandTotals.map((m, idx) => (
+                           <tr key={idx} className="bg-slate-50 border-b border-slate-200">
+                              <td colSpan={1} className="py-4 px-2 text-right opacity-30 text-[9px]">TOTAL</td>
+                              <td className="py-4 px-2 text-center">
+                                 <span className="text-[11px] font-black text-blue-900 bg-white px-3 py-1 rounded-full border border-blue-200 shadow-sm">
+                                   {m.eligible}
+                                 </span>
+                              </td>
+                              <td className="py-4 px-2 text-[11px] font-black text-slate-900 uppercase tracking-tighter">
+                                {m.name} Resource Index
+                              </td>
+                              <td className="py-4 px-2 text-right font-black text-emerald-700 decoration-emerald-500/30 decoration-2 underline-offset-4 underline">{m.taken}</td>
+                              <td className="py-4 px-2 text-right font-black text-red-700 decoration-red-500/30 decoration-2 underline-offset-4 underline">{m.pending}</td>
+                              <td className="py-4 px-2 text-right font-black text-slate-900 bg-white/50">{m.quantity.toLocaleString()} Total Units</td>
+                           </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </div>
+             </div>
+           ) : (
+             <div className="h-full flex flex-col items-center justify-center text-center p-12">
+                <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 border border-slate-100 border-dashed">
+                   <Users className="w-8 h-8 text-slate-300" />
+                </div>
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">No Overseer Selected</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-2 max-w-[200px] leading-relaxed">
+                   Select an overseer from the leaderboard to view detailed stage-wise progression audit
+                </p>
+             </div>
+           )}
+        </div>
+      </div>
+
     </div>
   );
 }
+
