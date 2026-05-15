@@ -66,6 +66,21 @@ const Engine = {
 
     if (path === '/data') return data;
 
+    // Handle bulk CRUD
+    if (path.startsWith('/bulk/') && options.method === 'POST') {
+      const collection = path.split('/')[2];
+      const items = JSON.parse(options.body);
+      if (Array.isArray(items)) {
+        items.forEach(item => {
+          const index = data[collection].findIndex((i: any) => i.id === item.id);
+          if (index >= 0) data[collection][index] = item;
+          else data[collection].push(item);
+        });
+        save();
+        return { success: true };
+      }
+    }
+
     // Handle generic CRUD
     const parts = path.split('/');
     const collection = parts[1];
@@ -125,6 +140,11 @@ export const Storage = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }),
+  setOverseersBulk: (data: Overseer[]) => Engine.request('/bulk/overseers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
   deleteOverseer: (id: string) => Engine.request(`/overseers/${id}`, { method: 'DELETE' }),
   
   setPanchayat: (data: Panchayat) => Engine.request('/panchayats', {
@@ -132,9 +152,19 @@ export const Storage = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }),
+  setPanchayatsBulk: (data: Panchayat[]) => Engine.request('/bulk/panchayats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
   deletePanchayat: (id: string) => Engine.request(`/panchayats/${id}`, { method: 'DELETE' }),
   
   setBeneficiary: (data: Beneficiary) => Engine.request('/beneficiaries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
+  setBeneficiariesBulk: (data: Beneficiary[]) => Engine.request('/bulk/beneficiaries', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)

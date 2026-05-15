@@ -169,62 +169,87 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const dataBuffer = evt.target?.result as ArrayBuffer;
+        const wb = XLSX.read(dataBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
         if (type === 'OVERSEER_PANCHAYAT') {
-          const newOverseersMap: Record<string, string> = {};
+          const newOverseers: Overseer[] = [];
+          const newPanchayats: Panchayat[] = [];
+          const overseerMap: Record<string, string> = {};
           
+          // Pre-populate with existing ones to avoid duplicates
+          overseers.forEach(o => overseerMap[o.name.toLowerCase()] = o.id);
+
           for (const row of data as any[]) {
-            const oName = row['Overseer'] || row['overseer'];
-            const pName = row['Panchayat'] || row['panchayat'];
+            const oName = (row['Overseer'] || row['overseer'])?.toString().trim();
+            const pName = (row['Panchayat'] || row['panchayat'])?.toString().trim();
             
-            if (oName && !newOverseersMap[oName]) {
+            if (oName && !overseerMap[oName.toLowerCase()]) {
               const oId = Storage.generateId();
-              newOverseersMap[oName] = oId;
-              await Storage.setOverseer({ id: oId, name: oName });
+              overseerMap[oName.toLowerCase()] = oId;
+              newOverseers.push({ id: oId, name: oName });
             }
             if (pName && oName) {
-              await Storage.setPanchayat({
-                id: Storage.generateId(),
-                name: pName,
-                overseerId: newOverseersMap[oName]
-              });
+              const oId = overseerMap[oName.toLowerCase()];
+              // Check if panchayat already exists
+              if (!panchayats.some(p => p.name.toLowerCase() === pName.toLowerCase())) {
+                newPanchayats.push({
+                  id: Storage.generateId(),
+                  name: pName,
+                  overseerId: oId
+                });
+              }
             }
           }
+
+          if (newOverseers.length > 0) await Storage.setOverseersBulk(newOverseers);
+          if (newPanchayats.length > 0) await Storage.setPanchayatsBulk(newPanchayats);
         } else {
           if (!targetSchemeId) {
             alert('Please select a target scheme before uploading beneficiaries.');
             return;
           }
-          for (const row of data as any[]) {
-            const pName = row['Panchayat'] || row['panchayat'];
-            const bName = row['Beneficiary'] || row['beneficiary'];
-            const year = row['Year'] || row['year'] || new Date().getFullYear().toString();
+          const beneficiariesToUpload: Beneficiary[] = [];
+          const rows = data as any[];
+          
+          for (const row of rows) {
+            const pName = (row['Panchayat'] || row['panchayat'])?.toString().trim();
+            const bName = (row['Beneficiary'] || row['beneficiary'])?.toString().trim();
+            const year = (row['Year'] || row['year'] || new Date().getFullYear().toString()).toString().trim();
             
-            const panchayat = panchayats.find(p => p.name.toLowerCase() === pName?.toString().toLowerCase());
-            if (bName && panchayat) {
-              await Storage.setBeneficiary({
+            if (!bName || !pName) continue;
+
+            const panchayat = panchayats.find(p => p.name.toLowerCase() === pName.toLowerCase());
+            
+            if (panchayat) {
+              beneficiariesToUpload.push({
                 id: Storage.generateId(),
                 name: bName,
                 panchayatId: panchayat.id,
                 schemeId: targetSchemeId,
-                year: year.toString()
+                year: year
               });
             }
+          }
+
+          if (beneficiariesToUpload.length > 0) {
+            await Storage.setBeneficiariesBulk(beneficiariesToUpload);
+          } else {
+            alert('No valid beneficiaries found in the file. Ensure Panchayat names match exactly!');
           }
         }
         await refreshData();
       } catch (err) {
         console.error("Upload failed", err);
+        alert("Upload failed. Please check the file format.");
       } finally {
         setIsProcessing(false);
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
 

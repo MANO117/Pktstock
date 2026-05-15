@@ -120,6 +120,29 @@ app.post("/api/:collection", async (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/api/bulk/:collection", async (req, res) => {
+  const { collection } = req.params;
+  const items = req.body; // Expecting an array
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ success: false, error: "Body must be an array" });
+  }
+
+  const data = await loadData();
+  if (!data[collection]) data[collection] = [];
+
+  for (const item of items) {
+    const index = data[collection].findIndex((i: any) => i.id === item.id);
+    if (index >= 0) {
+      data[collection][index] = item;
+    } else {
+      data[collection].push(item);
+    }
+  }
+
+  await saveData(data);
+  res.json({ success: true });
+});
+
 app.patch("/api/:collection/:id", async (req, res) => {
   const { collection, id } = req.params;
   const updates = req.body;
