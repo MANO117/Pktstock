@@ -175,17 +175,26 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
+        const findCol = (row: any, aliases: string[]) => {
+          const key = Object.keys(row).find(k => 
+            aliases.some(a => k.toLowerCase().trim() === a.toLowerCase() || 
+                             k.toLowerCase().trim().includes(a.toLowerCase()))
+          );
+          return key ? row[key] : null;
+        };
+
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
         if (type === 'OVERSEER_PANCHAYAT') {
           const newOverseers: Overseer[] = [];
           const newPanchayats: Panchayat[] = [];
           const overseerMap: Record<string, string> = {};
           
-          // Pre-populate with existing ones to avoid duplicates
-          overseers.forEach(o => overseerMap[o.name.toLowerCase()] = o.id);
+          overseers.forEach(o => overseerMap[o.name.toLowerCase().trim()] = o.id);
 
           for (const row of data as any[]) {
-            const oName = (row['Overseer'] || row['overseer'])?.toString().trim();
-            const pName = (row['Panchayat'] || row['panchayat'])?.toString().trim();
+            const oName = findCol(row, ['overseer', 'officer', 'staff', 'engineer'])?.toString().trim();
+            const pName = findCol(row, ['panchayat', 'locality', 'zone', 'village', 'gp'])?.toString().trim();
             
             if (oName && !overseerMap[oName.toLowerCase()]) {
               const oId = Storage.generateId();
@@ -194,8 +203,9 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
             }
             if (pName && oName) {
               const oId = overseerMap[oName.toLowerCase()];
-              // Check if panchayat already exists
-              if (!panchayats.some(p => p.name.toLowerCase() === pName.toLowerCase())) {
+              const pNameNorm = normalize(pName);
+              if (!panchayats.some(p => normalize(p.name) === pNameNorm) && 
+                  !newPanchayats.some(p => normalize(p.name) === pNameNorm)) {
                 newPanchayats.push({
                   id: Storage.generateId(),
                   name: pName,
@@ -207,22 +217,32 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
 
           if (newOverseers.length > 0) await Storage.setOverseersBulk(newOverseers);
           if (newPanchayats.length > 0) await Storage.setPanchayatsBulk(newPanchayats);
+          
+          alert(`Master Data Upload: Added ${newOverseers.length} new overseers and ${newPanchayats.length} new panchayats.`);
         } else {
           if (!targetSchemeId) {
-            alert('Please select a target scheme before uploading beneficiaries.');
+            alert('Selection Required: Please select a target scheme from the dropdown before uploading the list.');
             return;
           }
           const beneficiariesToUpload: Beneficiary[] = [];
           const rows = data as any[];
+          const skippedPanchayats = new Set<string>();
+          let skippedCount = 0;
           
-          for (const row of rows) {
-            const pName = (row['Panchayat'] || row['panchayat'])?.toString().trim();
-            const bName = (row['Beneficiary'] || row['beneficiary'])?.toString().trim();
-            const year = (row['Year'] || row['year'] || new Date().getFullYear().toString()).toString().trim();
-            
-            if (!bName || !pName) continue;
+          if (rows.length > 0) console.log("Excel Headers detected:", Object.keys(rows[0]));
 
-            const panchayat = panchayats.find(p => p.name.toLowerCase() === pName.toLowerCase());
+          for (const row of rows) {
+            const pNameRaw = findCol(row, ['panchayat', 'locality', 'zone', 'village', 'gp'])?.toString().trim();
+            const bName = findCol(row, ['beneficiary', 'name', 'farmer', 'recipient', 'beneficary'])?.toString().trim();
+            const year = (findCol(row, ['year', 'fy', 'fiscal']) || new Date().getFullYear().toString()).toString().trim();
+            
+            if (!bName || !pNameRaw) {
+              skippedCount++;
+              continue;
+            }
+
+            const pNameNorm = normalize(pNameRaw);
+            const panchayat = panchayats.find(p => normalize(p.name) === pNameNorm);
             
             if (panchayat) {
               beneficiariesToUpload.push({
@@ -232,13 +252,22 @@ export default function MasterData({ isAdmin }: { isAdmin?: boolean }) {
                 schemeId: targetSchemeId,
                 year: year
               });
+            } else {
+              skippedPanchayats.add(pNameRaw);
+              skippedCount++;
             }
           }
 
           if (beneficiariesToUpload.length > 0) {
             await Storage.setBeneficiariesBulk(beneficiariesToUpload);
+            const statusMsg = `Successfully added ${beneficiariesToUpload.length} beneficiaries from ${rows.length} rows.`;
+            if (skippedCount > 0) {
+              alert(`Beneficiary Upload: ${statusMsg} \n\n⚠️ ${skippedCount} items skipped (Panchayat mismatch or missing data). \n\nCheck these Panchayats in your file: ${Array.from(skippedPanchayats).slice(0, 10).join(', ')}${skippedPanchayats.size > 10 ? '...' : ''}`);
+            } else {
+              alert(`Beneficiary Upload: ${statusMsg}`);
+            }
           } else {
-            alert('No valid beneficiaries found in the file. Ensure Panchayat names match exactly!');
+            alert(`Data Mismatch Error:\n\nNo beneficiaries could be imported.\n\n1. Found ${rows.length} total rows.\n2. Column mapping was attempted.\n3. Check if your Panchayat names match: ${Array.from(skippedPanchayats).join(', ')}`);
           }
         }
         await refreshData();

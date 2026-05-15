@@ -2,16 +2,14 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs/promises";
 import path from "path";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const DB_FILE = path.join(process.cwd(), "data.json");
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // In-memory data store to avoid frequent disk I/O
 let cachedData: any = null;
